@@ -18,7 +18,8 @@ clean:
 
 prepare: clean
 	-diff -u ${ORIGINAL_FILE} ${UPDATED_FILE} > ${PATCH_FILE}
+	patch ${ORIGINAL_FILE} < ${PATCH_FILE}
 
 patch: prepare
-	patch ${ORIGINAL_FILE} < ${PATCH_FILE}
 	cp backend/s3/iam.go rclone/backend/s3/
+	cd rclone && go mod tidy

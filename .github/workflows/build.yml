@@ -115,21 +115,16 @@ jobs:
       - name: Checkout submodules
         run: git submodule update --init --recursive
 
-      # - name: test
-      #   shell: bash
-      #   run: |
-      #     ls -altrh
-
-      - name: Prepare patch
-        shell: bash
-        run: |
-          make patch
-
       - name: Install Go
         uses: actions/setup-go@v2
         with:
           stable: "false"
           go-version: ${{ matrix.go }}
+
+      - name: Apply patch
+        shell: bash
+        run: |
+          make patch
 
       - name: Set environment variables
         shell: bash
