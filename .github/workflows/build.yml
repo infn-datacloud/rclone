@@ -113,6 +113,11 @@ jobs:
           fetch-depth: 1
           submodules: true
 
+      - name: test
+        shell: bash
+        run: |
+          ls -altrh
+
       - name: Prepare patch
         shell: bash
         run: |
