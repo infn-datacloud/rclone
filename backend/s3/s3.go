@@ -1538,9 +1538,9 @@ func s3Connection(ctx context.Context, opt *Options) (*s3.S3, *session.Session, 
 	case opt.EnvAuth:
 		// No need for empty checks if "env_auth" is true
 	// Disable anonymous credentials
-	// case v.AccessKeyID == "" && v.SecretAccessKey == "":
-	// 	// if no access key/secret and iam is explicitly disabled then fall back to anon interaction
-	// 	cred = credentials.AnonymousCredentials
+	case v.AccessKeyID == "" && v.SecretAccessKey == "":
+		// if no access key/secret and iam is explicitly disabled then fall back to anon interaction
+		//cred = credentials.AnonymousCredentials
 	case v.AccessKeyID == "":
 		return nil, nil, errors.New("access_key_id not found")
 	case v.SecretAccessKey == "":
