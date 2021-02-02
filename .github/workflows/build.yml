@@ -110,7 +110,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
         with:
-          fetch-depth: 0
           submodules: true
 
       - name: Install Go
@@ -160,6 +159,11 @@ jobs:
           Copy-Item -Path $path -Destination (Join-Path (Split-Path -Path $path) 'make.exe')
         if: matrix.os == 'windows-latest'
 
+      - name: Prepare patch
+        shell: bash
+        run: |
+          make patch
+
       - name: Print Go version and environment
         shell: bash
         run: |
@@ -179,11 +183,6 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
-
-      - name: Prepare patch
-        shell: bash
-        run: |
-          make patch
 
       - name: Build rclone
         shell: bash
@@ -227,51 +226,3 @@ jobs:
         # working-directory: '$(modulePath)'
         # Deploy binaries if enabled in config && not a PR && not a fork
         if: matrix.deploy && github.head_ref == '' && github.repository == 'DODAS-TS/rclone'
-
-  xgo:
-    timeout-minutes: 60
-    name: "xgo cross compile"
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-        with:
-          # Checkout into a fixed path to avoid import path problems on go < 1.11
-          path: ./src/github.com/DODAS-TS/rclone
-          submodules: true
-
-      - name: Set environment variables
-        shell: bash
-        run: |
-          echo 'GOPATH=${{ runner.workspace }}' >> $GITHUB_ENV
-          echo '${{ runner.workspace }}/bin' >> $GITHUB_PATH
-
-      - name: Cross-compile rclone
-        run: |
-          docker pull billziss/xgo-cgofuse
-          GO111MODULE=off go get -v github.com/karalabe/xgo # don't add to go.mod
-          # xgo \
-          #     -image=billziss/xgo-cgofuse \
-          #     -targets=darwin/amd64,linux/386,linux/amd64,windows/386,windows/amd64 \
-          #     -tags cmount \
-          #     -dest build \
-          #     .
-          xgo \
-              -image=billziss/xgo-cgofuse \
-              -targets=android/*,ios/* \
-              -dest build \
-              .
-
-      - name: Build rclone
-        shell: bash
-        run: |
-          make
-
-      - name: Upload artifacts
-        run: |
-          make -c rclone ci_upload
-        env:
-          RCLONE_CONFIG_PASS: ${{ secrets.RCLONE_CONFIG_PASS }}
-        # Upload artifacts if not a PR && not a fork
-        if: github.head_ref == '' && github.repository == 'DODAS-TS/rclone'
