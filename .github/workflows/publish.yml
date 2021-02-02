@@ -216,7 +216,7 @@ jobs:
         shell: bash
         run: |
           make publish
-        if: matrix.publish
+        if: matrix.publish == true
 
       - name: Upload release binaries
         uses: alexellis/upload-assets@0.2.2
