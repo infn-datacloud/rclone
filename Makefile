@@ -5,7 +5,8 @@ PATCH_FILE=patches/s3.patch
 all: clean prepare patch build
 
 build: clean prepare patch
-	cd rclone && $(MAKE)
+	# Change dir and call `make rclone`
+	$(MAKE) -C rclone rclone
 
 clean:
 	git submodule init
