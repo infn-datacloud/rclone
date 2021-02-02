@@ -7,6 +7,9 @@ CUR_OS=""
 ifeq ($(OS),Windows_NT)
 publish:
 	cp `go env GOPATH`/bin/rclone`go env GOEXE` ./rclone_windows.exe
+
+prepare: clean
+	mv ${UPDATED_FILE} ${ORIGINAL_FILE}
 else
     UNAME_S := $(shell uname -s)
     ifeq ($(UNAME_S),Linux)
@@ -17,6 +20,9 @@ publish:
 publish:
 	cp `go env GOPATH`/bin/rclone`go env GOEXE` ./rclone_osx
     endif
+prepare: clean
+	-diff -u ${ORIGINAL_FILE} ${UPDATED_FILE} > ${PATCH_FILE}
+	patch ${ORIGINAL_FILE} < ${PATCH_FILE}
 endif
 
 .PHONY: all build prepare clean patch vars version
@@ -32,10 +38,6 @@ clean:
 	git submodule update --init
 	git submodule sync
 	cd rclone && git reset --hard HEAD
-
-prepare: clean
-	-diff -u ${ORIGINAL_FILE} ${UPDATED_FILE} > ${PATCH_FILE}
-	patch ${ORIGINAL_FILE} < ${PATCH_FILE}
 
 patch: prepare
 	cp backend/s3/iam.go rclone/backend/s3/
