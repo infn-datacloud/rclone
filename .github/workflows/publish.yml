@@ -70,6 +70,7 @@ jobs:
             build_flags: '-exclude "^(windows/|darwin/amd64|linux/)"'
             compile_all: true
             deploy: true
+            publish: false
 
           - job_name: go1.12
             os: ubuntu-latest
@@ -80,18 +81,21 @@ jobs:
             os: ubuntu-latest
             go: "1.13.x"
             quicktest: true
+            publish: false
 
           - job_name: go1.14
             os: ubuntu-latest
             go: "1.14.x"
             quicktest: true
             racequicktest: true
+            publish: false
 
           - job_name: go1.16
             os: ubuntu-latest
             go: "1.16.0-rc1"
             quicktest: true
             racequicktest: true
+            publish: false
 
     name: ${{ matrix.job_name }}
 
