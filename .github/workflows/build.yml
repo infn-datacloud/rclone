@@ -115,10 +115,10 @@ jobs:
       - name: Checkout submodules
         run: git submodule update --init --recursive
 
-      - name: test
-        shell: bash
-        run: |
-          ls -altrh
+      # - name: test
+      #   shell: bash
+      #   run: |
+      #     ls -altrh
 
       - name: Prepare patch
         shell: bash
