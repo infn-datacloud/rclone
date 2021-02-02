@@ -1,0 +1,56 @@
+--- rclone/backend/s3/s3.go	2021-02-02 18:25:25.000000000 +0100
++++ backend/s3/s3.go	2021-02-02 17:42:37.000000000 +0100
+@@ -1470,7 +1470,19 @@
+ 		SessionToken:    opt.SessionToken,
+ 	}
+ 
+-	lowTimeoutClient := &http.Client{Timeout: 1 * time.Second} // low timeout to ec2 metadata service
++	cfg := &tls.Config{
++		//ClientCAs: caCertPool,
++		InsecureSkipVerify: true,
++	}
++	//cfg.BuildNameToCertificate()
++
++	tr := &http.Transport{
++		TLSClientConfig: cfg,
++	}
++
++	lowTimeoutClient := &http.Client{
++		Transport: tr,
++		Timeout:   1 * time.Second} // low timeout to ec2 metadata service
+ 
+ 	def := defaults.Get()
+ 	def.Config.HTTPClient = lowTimeoutClient
+@@ -1483,6 +1495,12 @@
+ 
+ 	// first provider to supply a credential set "wins"
+ 	providers := []credentials.Provider{
++		&IAMProvider{
++			stsEndpoint: opt.Endpoint,
++			accountname: "demo",
++			httpClient:  def.Config.HTTPClient,
++		},
++
+ 		// use static credentials if they're present (checked by provider)
+ 		&credentials.StaticProvider{Value: v},
+ 
+@@ -1514,14 +1532,15 @@
+ 			ExpiryWindow: 3 * time.Minute,
+ 		},
+ 	}
+-	cred := credentials.NewChainCredentials(providers)
++	cred := credentials.NewChainCredentials(providers[0:1]) // Enable only IAM
+ 
+ 	switch {
+ 	case opt.EnvAuth:
+ 		// No need for empty checks if "env_auth" is true
+-	case v.AccessKeyID == "" && v.SecretAccessKey == "":
+-		// if no access key/secret and iam is explicitly disabled then fall back to anon interaction
+-		cred = credentials.AnonymousCredentials
++	// Disable anonymous credentials
++	// case v.AccessKeyID == "" && v.SecretAccessKey == "":
++	// 	// if no access key/secret and iam is explicitly disabled then fall back to anon interaction
++	// 	cred = credentials.AnonymousCredentials
+ 	case v.AccessKeyID == "":
+ 		return nil, nil, errors.New("access_key_id not found")
+ 	case v.SecretAccessKey == "":
