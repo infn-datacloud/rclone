@@ -2,6 +2,8 @@ ORIGINAL_FILE=rclone/backend/s3/s3.go
 UPDATED_FILE=backend/s3/s3.go
 PATCH_FILE=patches/s3.patch
 
+.PHONY: all build prepare clean patch vars version
+
 all: clean prepare patch build
 
 build: clean prepare patch
@@ -20,3 +22,11 @@ prepare: clean
 patch: prepare
 	patch ${ORIGINAL_FILE} < ${PATCH_FILE}
 	cp backend/s3/iam.go rclone/backend/s3/
+
+vars:
+	# Change dir and call `make vars`
+	$(MAKE) -C rclone vars
+
+version:
+	# Change dir and call `make version`
+	$(MAKE) -C rclone version
