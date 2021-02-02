@@ -22,11 +22,3 @@ prepare: clean
 patch: prepare
 	patch ${ORIGINAL_FILE} < ${PATCH_FILE}
 	cp backend/s3/iam.go rclone/backend/s3/
-
-vars:
-	# Change dir and call `make vars`
-	$(MAKE) -C rclone vars
-
-version:
-	# Change dir and call `make version`
-	$(MAKE) -C rclone version

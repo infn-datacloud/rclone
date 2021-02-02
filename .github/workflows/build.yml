@@ -7,8 +7,8 @@ name: build
 # Trigger the workflow on push or pull request
 on:
   push:
-    branches:
-      - "*"
+    # branches:
+    #   - "*"
     tags:
       - "*"
   pull_request:
@@ -167,7 +167,7 @@ jobs:
           printf "\n\nGo environment:\n\n"
           go env
           printf "\n\nRclone environment:\n\n"
-          make vars
+          make -C rclone vars
           printf "\n\nSystem environment:\n\n"
           env
 
@@ -179,43 +179,48 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
+      - name: Prepare patch
+        shell: bash
+        run: |
+          make patch
+
       - name: Build rclone
         shell: bash
         run: |
-          make
+          make -C rclone
 
-      - name: Run tests
-        shell: bash
-        run: |
-          make quicktest
-        if: matrix.quicktest
+      # - name: Run tests
+      #   shell: bash
+      #   run: |
+      #     make quicktest
+      #   if: matrix.quicktest
 
-      - name: Race test
-        shell: bash
-        run: |
-          make racequicktest
-        if: matrix.racequicktest
+      # - name: Race test
+      #   shell: bash
+      #   run: |
+      #     make racequicktest
+      #   if: matrix.racequicktest
 
-      - name: Code quality test
-        shell: bash
-        run: |
-          make build_dep
-          make check
-        if: matrix.check
+      # - name: Code quality test
+      #   shell: bash
+      #   run: |
+      #     make build_dep
+      #     make check
+      #   if: matrix.check
 
       - name: Compile all architectures test
         shell: bash
         run: |
-          make
-          make compile_all
+          make -C rclone
+          make -C rclone compile_all
         if: matrix.compile_all
 
       - name: Deploy built binaries
         shell: bash
         run: |
-          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then make release_dep_linux ; fi
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then make release_dep_windows ; fi
-          make ci_beta
+          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then make -C rclone release_dep_linux ; fi
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then make -C rclone release_dep_windows ; fi
+          make -C rclone ci_beta
         env:
           RCLONE_CONFIG_PASS: ${{ secrets.RCLONE_CONFIG_PASS }}
         # working-directory: '$(modulePath)'
@@ -229,10 +234,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
         with:
           # Checkout into a fixed path to avoid import path problems on go < 1.11
           path: ./src/github.com/DODAS-TS/rclone
+          submodules: true
 
       - name: Set environment variables
         shell: bash
@@ -263,7 +269,7 @@ jobs:
 
       - name: Upload artifacts
         run: |
-          make ci_upload
+          make -c rclone ci_upload
         env:
           RCLONE_CONFIG_PASS: ${{ secrets.RCLONE_CONFIG_PASS }}
         # Upload artifacts if not a PR && not a fork
