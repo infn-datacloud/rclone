@@ -111,7 +111,9 @@ jobs:
         uses: actions/checkout@master
         with:
           fetch-depth: 1
-          submodules: true
+
+      - name: Checkout submodules
+        run: git submodule update --init --recursive
 
       - name: test
         shell: bash
