@@ -2,6 +2,23 @@ ORIGINAL_FILE=rclone/backend/s3/s3.go
 UPDATED_FILE=backend/s3/s3.go
 PATCH_FILE=patches/s3.patch
 
+CUR_OS=""
+
+ifeq ($(OS),Windows_NT)
+publish:
+	cp `go env GOPATH`/bin/rclone`go env GOEXE` ./rclone_windows.exe
+else
+    UNAME_S := $(shell uname -s)
+    ifeq ($(UNAME_S),Linux)
+publish:
+	cp `go env GOPATH`/bin/rclone`go env GOEXE` ./rclone_linux
+    endif
+    ifeq ($(UNAME_S),Darwin)
+publish:
+	cp `go env GOPATH`/bin/rclone`go env GOEXE` ./rclone_osx
+    endif
+endif
+
 .PHONY: all build prepare clean patch vars version
 
 all: clean prepare patch build

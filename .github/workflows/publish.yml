@@ -1,8 +1,8 @@
 ---
-# Github Actions build for rclone
-# -*- compile-command: "yamllint -f parsable build.yml" -*-
+# Github Actions publish for rclone
+# -*- compile-command: "yamllint -f parsable publish.yml" -*-
 
-name: build
+name: publish
 
 # Trigger the workflow on push or pull request
 on:
@@ -14,7 +14,7 @@ on:
   pull_request:
 
 jobs:
-  build:
+  publish:
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -215,17 +215,17 @@ jobs:
         shell: bash
         run: |
           make -C rclone
-          make -C rclone compile_all
         if: matrix.compile_all
 
-      - name: Deploy built binaries
+      - name: Make publish
         shell: bash
         run: |
-          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then make -C rclone release_dep_linux ; fi
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then make -C rclone release_dep_windows ; fi
-          make -C rclone ci_beta
+          make publish
+        if: matrix.compile_all
+
+      - name: Upload release binaries
+        uses: alexellis/upload-assets@0.2.2
         env:
-          RCLONE_CONFIG_PASS: ${{ secrets.RCLONE_CONFIG_PASS }}
-        # working-directory: '$(modulePath)'
-        # Deploy binaries if enabled in config && not a PR && not a fork
-        if: matrix.deploy && github.head_ref == '' && github.repository == 'DODAS-TS/rclone'
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          asset_paths: '["./rclone_*"]'

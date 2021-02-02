@@ -1,4 +1,4 @@
---- rclone/backend/s3/s3.go	2021-02-02 19:16:08.000000000 +0100
+--- rclone/backend/s3/s3.go	2021-02-02 19:43:47.000000000 +0100
 +++ backend/s3/s3.go	2021-02-02 17:42:37.000000000 +0100
 @@ -1470,7 +1470,19 @@
  		SessionToken:    opt.SessionToken,
