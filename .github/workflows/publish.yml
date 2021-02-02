@@ -224,3 +224,4 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           asset_paths: '["./rclone_*"]'
+        if: matrix.publish == true
