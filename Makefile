@@ -25,7 +25,7 @@ prepare: clean
 	patch ${ORIGINAL_FILE} < ${PATCH_FILE}
 endif
 
-.PHONY: all build prepare clean patch vars version
+.PHONY: all build prepare clean patch vars version build-plugin
 
 all: clean prepare patch build
 
@@ -42,3 +42,6 @@ clean:
 patch: prepare
 	cp backend/s3/iam.go rclone/backend/s3/
 	cd rclone && go mod tidy
+
+build-plugin:
+	cd plugins/s3iam && go mod tidy && go build -buildmode=plugin -o librcloneplugin_backend_s3iam.so  .
