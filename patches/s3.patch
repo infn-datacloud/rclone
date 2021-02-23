@@ -1,6 +1,50 @@
---- rclone/backend/s3/s3.go	2021-02-02 19:43:47.000000000 +0100
-+++ backend/s3/s3.go	2021-02-02 17:42:37.000000000 +0100
-@@ -1470,7 +1470,19 @@
+--- rclone/backend/s3/s3.go	2021-02-23 15:48:35.342689447 +0100
++++ backend/s3/s3.go	2021-02-23 16:41:05.277579540 +0100
+@@ -59,7 +59,7 @@
+ func init() {
+ 	fs.Register(&fs.RegInfo{
+ 		Name:        "s3",
+-		Description: "Amazon S3 Compliant Storage Providers including AWS, Alibaba, Ceph, Digital Ocean, Dreamhost, IBM COS, Minio, and Tencent COS",
++		Description: "Amazon S3 Compliant Storage Providers including AWS, Alibaba, Ceph, Digital Ocean, Dreamhost, IBM COS, INFN CLOUD, Minio, and Tencent COS",
+ 		NewFs:       NewFs,
+ 		CommandHelp: commandHelp,
+ 		Options: []fs.Option{{
+@@ -84,6 +84,9 @@
+ 				Value: "IBMCOS",
+ 				Help:  "IBM COS S3",
+ 			}, {
++				Value: "INFN CLOUD",
++				Help:  "INFN CLOUD S3 with STS IAM",
++			}, {
+ 				Value: "Minio",
+ 				Help:  "Minio Object Storage",
+ 			}, {
+@@ -117,6 +120,16 @@
+ 				Help:  "Get AWS credentials from the environment (env vars or IAM)",
+ 			}},
+ 		}, {
++			Name:     "account",
++			Help:     "Get oidc-agent account name",
++			Default:  "dodas",
++			Provider: "INFN CLOUD",
++			Examples: []fs.OptionExample{{
++				Value: "dodas",
++				Help:  "If you can get the token with: oidc-token dodas",
++			},
++			},
++		}, {
+ 			Name: "access_key_id",
+ 			Help: "AWS Access Key ID.\nLeave blank for anonymous access or runtime credentials.",
+ 		}, {
+@@ -1289,6 +1302,7 @@
+ type Options struct {
+ 	Provider              string               `config:"provider"`
+ 	EnvAuth               bool                 `config:"env_auth"`
++	Account               string               `config:"account"`
+ 	AccessKeyID           string               `config:"access_key_id"`
+ 	SecretAccessKey       string               `config:"secret_access_key"`
+ 	Region                string               `config:"region"`
+@@ -1470,7 +1484,19 @@
  		SessionToken:    opt.SessionToken,
  	}
  
@@ -21,20 +65,20 @@
  
  	def := defaults.Get()
  	def.Config.HTTPClient = lowTimeoutClient
-@@ -1483,6 +1495,12 @@
+@@ -1483,6 +1509,12 @@
  
  	// first provider to supply a credential set "wins"
  	providers := []credentials.Provider{
 +		&IAMProvider{
 +			stsEndpoint: opt.Endpoint,
-+			accountname: "demo",
++			accountname: opt.Account,
 +			httpClient:  def.Config.HTTPClient,
 +		},
 +
  		// use static credentials if they're present (checked by provider)
  		&credentials.StaticProvider{Value: v},
  
-@@ -1514,14 +1532,15 @@
+@@ -1514,14 +1546,15 @@
  			ExpiryWindow: 3 * time.Minute,
  		},
  	}
@@ -44,13 +88,11 @@
  	switch {
  	case opt.EnvAuth:
  		// No need for empty checks if "env_auth" is true
--	case v.AccessKeyID == "" && v.SecretAccessKey == "":
--		// if no access key/secret and iam is explicitly disabled then fall back to anon interaction
--		cred = credentials.AnonymousCredentials
 +	// Disable anonymous credentials
-+	// case v.AccessKeyID == "" && v.SecretAccessKey == "":
-+	// 	// if no access key/secret and iam is explicitly disabled then fall back to anon interaction
-+	// 	cred = credentials.AnonymousCredentials
+ 	case v.AccessKeyID == "" && v.SecretAccessKey == "":
+ 		// if no access key/secret and iam is explicitly disabled then fall back to anon interaction
+-		cred = credentials.AnonymousCredentials
++		//cred = credentials.AnonymousCredentials
  	case v.AccessKeyID == "":
  		return nil, nil, errors.New("access_key_id not found")
  	case v.SecretAccessKey == "":

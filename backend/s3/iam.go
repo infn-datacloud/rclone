@@ -2,11 +2,13 @@ package s3
 
 import (
 	"encoding/xml"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/indigo-dc/liboidcagent-go/liboidcagent"
 	"github.com/minio/minio/pkg/auth"
 )
 
@@ -49,21 +51,12 @@ type WebIdentityResult struct {
 // Retrieve credentials
 func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 
-	//token, err := liboidcagent.GetAccessToken2(t.accountname, 60, "", "", "")
-	//if err != nil {
-	//	fmt.Printf("%s\n", err)
-	//	// Additional error handling
-	//} else {
-	//	fmt.Printf("Access token is: %s\n", token)
-	//}
-
-	dat, err := ioutil.ReadFile(".token")
+	token, err := liboidcagent.GetAccessToken2(t.accountname, 60, "", "", "")
 	if err != nil {
 		return credentials.Value{}, err
 	}
-	// fmt.Print(string(dat))
 
-	token := string(dat)
+	fmt.Printf("Access token is: %s\n", token)
 
 	//contentType := ""
 	body := url.Values{}

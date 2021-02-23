@@ -59,7 +59,7 @@ import (
 func init() {
 	fs.Register(&fs.RegInfo{
 		Name:        "s3",
-		Description: "Amazon S3 Compliant Storage Providers including AWS, Alibaba, Ceph, Digital Ocean, Dreamhost, IBM COS, Minio, and Tencent COS",
+		Description: "Amazon S3 Compliant Storage Providers including AWS, Alibaba, Ceph, Digital Ocean, Dreamhost, IBM COS, INFN CLOUD, Minio, and Tencent COS",
 		NewFs:       NewFs,
 		CommandHelp: commandHelp,
 		Options: []fs.Option{{
@@ -83,6 +83,9 @@ func init() {
 			}, {
 				Value: "IBMCOS",
 				Help:  "IBM COS S3",
+			}, {
+				Value: "INFN CLOUD",
+				Help:  "INFN CLOUD S3 with STS IAM",
 			}, {
 				Value: "Minio",
 				Help:  "Minio Object Storage",
@@ -116,6 +119,16 @@ func init() {
 				Value: "true",
 				Help:  "Get AWS credentials from the environment (env vars or IAM)",
 			}},
+		}, {
+			Name:     "account",
+			Help:     "Get oidc-agent account name",
+			Default:  "dodas",
+			Provider: "INFN CLOUD",
+			Examples: []fs.OptionExample{{
+				Value: "dodas",
+				Help:  "If you can get the token with: oidc-token dodas",
+			},
+			},
 		}, {
 			Name: "access_key_id",
 			Help: "AWS Access Key ID.\nLeave blank for anonymous access or runtime credentials.",
@@ -1289,6 +1302,7 @@ const (
 type Options struct {
 	Provider              string               `config:"provider"`
 	EnvAuth               bool                 `config:"env_auth"`
+	Account               string               `config:"account"`
 	AccessKeyID           string               `config:"access_key_id"`
 	SecretAccessKey       string               `config:"secret_access_key"`
 	Region                string               `config:"region"`
@@ -1497,7 +1511,7 @@ func s3Connection(ctx context.Context, opt *Options) (*s3.S3, *session.Session, 
 	providers := []credentials.Provider{
 		&IAMProvider{
 			stsEndpoint: opt.Endpoint,
-			accountname: "demo",
+			accountname: opt.Account,
 			httpClient:  def.Config.HTTPClient,
 		},
 
