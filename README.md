@@ -156,7 +156,8 @@ r) Rename remote
 c) Copy remote
 s) Set configuration password
 q) Quit config
-e/n/d/r/c/s/q> q```
+e/n/d/r/c/s/q> q
+```
 
 ### Test it out
 
