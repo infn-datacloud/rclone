@@ -6,12 +6,12 @@ Rclone patcher to add IAM support
 ### Pre-requisite
 
 - oidc-agent >= 4.0.x
-  with your oidc provider registered (e.g. INFN-Cloud IAM instance)
+  - with your oidc provider registered. To use INFN-Cloud for instance, follow the instructions [here](https://confluence.infn.it/pages/viewpage.action?spaceKey=INFNCLOUD&title=How+To%3A+Test+TOSCA+with+orchent) until reaching a working `oidc-token infncloud` command.
 
 - download the rclone binary:
 
 ```bash
-wget 
+wget https://github.com/DODAS-TS/rclone/releases/download/v1.54.0-oidcagent/rclone
 chmod +x ./rclone
 ```
 
@@ -60,7 +60,7 @@ Then press enter at:
 env_auth>
 ```
 
-Now put in account the name of the oidc-agent profile you want to use. In other word the name that typing `oidc-token <your profile name>` is returning you with a valid token.
+Now put in account the name of the oidc-agent profile you want to use. In other word the name that typing `oidc-token <your profile name>` is returning you with a valid token (in case of INFN-Cloud, would probably be `infncloud`).
 
 ```bash
 account> <your profile name>
@@ -164,6 +164,10 @@ e/n/d/r/c/s/q> q
 Now you should be able to see your bucket content (if and only if `oidc-token <your profile name>` is working in your session) with:
 
 ```bash
-rclone ls infncloud:/
+$ ./rclone ls infncloud:/<username>
+
+Access token is: aadasad....blabla
+     6145 contatore_presenze.py
+104857600 test1.img
 ```
 
