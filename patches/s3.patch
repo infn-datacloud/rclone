@@ -1,6 +1,39 @@
---- rclone/backend/s3/s3.go	2021-02-02 19:43:47.000000000 +0100
-+++ backend/s3/s3.go	2021-02-02 17:42:37.000000000 +0100
-@@ -1470,7 +1470,19 @@
+--- rclone/backend/s3/s3.go	2021-04-29 12:02:08.000000000 +0200
++++ backend/s3/s3.go	2021-04-29 12:01:27.000000000 +0200
+@@ -58,7 +58,7 @@
+ // Register with Fs
+ func init() {
+ 	fs.Register(&fs.RegInfo{
+-		Name:        "s3",
++		Name:        "s3iam",
+ 		Description: "Amazon S3 Compliant Storage Providers including AWS, Alibaba, Ceph, Digital Ocean, Dreamhost, IBM COS, Minio, and Tencent COS",
+ 		NewFs:       NewFs,
+ 		CommandHelp: commandHelp,
+@@ -117,6 +117,15 @@
+ 				Help:  "Get AWS credentials from the environment (env vars or IAM)",
+ 			}},
+ 		}, {
++			Name:    "account",
++			Help:    "Get oidc-agent account name",
++			Default: "dodas",
++			Examples: []fs.OptionExample{{
++				Value: "dodas",
++				Help:  "If you can get the token with: oidc-token dodas",
++			},
++			},
++		}, {
+ 			Name: "access_key_id",
+ 			Help: "AWS Access Key ID.\nLeave blank for anonymous access or runtime credentials.",
+ 		}, {
+@@ -1289,6 +1298,7 @@
+ type Options struct {
+ 	Provider              string               `config:"provider"`
+ 	EnvAuth               bool                 `config:"env_auth"`
++	Account               string               `config:"account"`
+ 	AccessKeyID           string               `config:"access_key_id"`
+ 	SecretAccessKey       string               `config:"secret_access_key"`
+ 	Region                string               `config:"region"`
+@@ -1473,7 +1483,20 @@
  		SessionToken:    opt.SessionToken,
  	}
  
@@ -17,24 +50,25 @@
 +
 +	lowTimeoutClient := &http.Client{
 +		Transport: tr,
-+		Timeout:   1 * time.Second} // low timeout to ec2 metadata service
++		Timeout:   1 * time.Second,
++	} // low timeout to ec2 metadata service
  
  	def := defaults.Get()
  	def.Config.HTTPClient = lowTimeoutClient
-@@ -1483,6 +1495,12 @@
+@@ -1486,6 +1509,12 @@
  
  	// first provider to supply a credential set "wins"
  	providers := []credentials.Provider{
 +		&IAMProvider{
 +			stsEndpoint: opt.Endpoint,
-+			accountname: "demo",
++			accountname: opt.Account,
 +			httpClient:  def.Config.HTTPClient,
 +		},
 +
  		// use static credentials if they're present (checked by provider)
  		&credentials.StaticProvider{Value: v},
  
-@@ -1514,14 +1532,15 @@
+@@ -1517,14 +1546,15 @@
  			ExpiryWindow: 3 * time.Minute,
  		},
  	}
@@ -44,13 +78,48 @@
  	switch {
  	case opt.EnvAuth:
  		// No need for empty checks if "env_auth" is true
--	case v.AccessKeyID == "" && v.SecretAccessKey == "":
--		// if no access key/secret and iam is explicitly disabled then fall back to anon interaction
--		cred = credentials.AnonymousCredentials
 +	// Disable anonymous credentials
-+	// case v.AccessKeyID == "" && v.SecretAccessKey == "":
-+	// 	// if no access key/secret and iam is explicitly disabled then fall back to anon interaction
-+	// 	cred = credentials.AnonymousCredentials
+ 	case v.AccessKeyID == "" && v.SecretAccessKey == "":
+ 		// if no access key/secret and iam is explicitly disabled then fall back to anon interaction
+-		cred = credentials.AnonymousCredentials
++		//cred = credentials.AnonymousCredentials
  	case v.AccessKeyID == "":
  		return nil, nil, errors.New("access_key_id not found")
  	case v.SecretAccessKey == "":
+@@ -1543,7 +1573,7 @@
+ 	awsConfig := aws.NewConfig().
+ 		WithMaxRetries(0). // Rely on rclone's retry logic
+ 		WithCredentials(cred).
+-		WithHTTPClient(client).
++		WithHTTPClient(getClient(ctx, opt)).
+ 		WithS3ForcePathStyle(opt.ForcePathStyle).
+ 		WithS3UseAccelerate(opt.UseAccelerateEndpoint).
+ 		WithS3UsEast1RegionalEndpoint(endpoints.RegionalS3UsEast1Endpoint)
+@@ -1563,7 +1593,10 @@
+ 		// Enable loading config options from ~/.aws/config (selected by AWS_PROFILE env)
+ 		awsSessionOpts.SharedConfigState = session.SharedConfigEnable
+ 		// Set the name of the profile if supplied
+-		awsSessionOpts.Profile = opt.Profile
++		// awsSessionOpts.Profile = opt.Profile
++		// The session constructor (aws/session/mergeConfigSrcs) will only use the user's preferred credential source
++		// (from the shared config file) if the passed-in Options.Config.Credentials is nil.
++		awsSessionOpts.Config.Credentials = nil
+ 	}
+ 	ses, err := session.NewSessionWithOptions(awsSessionOpts)
+ 	if err != nil {
+@@ -1700,9 +1733,12 @@
+ 		f.setRoot(newRoot)
+ 		_, err := f.NewObject(ctx, leaf)
+ 		if err != nil {
+-			// File doesn't exist or is a directory so return old f
+-			f.setRoot(oldRoot)
+-			return f, nil
++			if err == fs.ErrorObjectNotFound || err == fs.ErrorNotAFile {
++				// File doesn't exist or is a directory so return old f
++				f.setRoot(oldRoot)
++				return f, nil
++			}
++			return nil, err
+ 		}
+ 		// return an error with an fs which points to the parent
+ 		return f, fs.ErrorIsFile
