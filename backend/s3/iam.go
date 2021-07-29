@@ -7,7 +7,7 @@ import (
 	"net/url"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/minio/minio/pkg/auth"
+	minioCredetials "github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 // IAMProvider credential provider for oidc
@@ -38,12 +38,14 @@ type AssumedRoleUser struct {
 // WebIdentityResult - Contains the response to a successful AssumeRoleWithWebIdentity
 // request, including temporary credentials that can be used to make MinIO API requests.
 type WebIdentityResult struct {
-	AssumedRoleUser             AssumedRoleUser  `xml:",omitempty"`
-	Audience                    string           `xml:",omitempty"`
-	Credentials                 auth.Credentials `xml:",omitempty"`
-	PackedPolicySize            int              `xml:",omitempty"`
-	Provider                    string           `xml:",omitempty"`
-	SubjectFromWebIdentityToken string           `xml:",omitempty"`
+	AssumedRoleUser AssumedRoleUser `xml:",omitempty"`
+	Audience        string          `xml:",omitempty"`
+	// Minio credentials:
+	// - https://github.com/minio/minio-go/blob/cce8cf0f5350e0feea8112026429105e6ed6db58/pkg/credentials/credentials.go#L110
+	Credentials                 minioCredetials.Credentials `xml:",omitempty"`
+	PackedPolicySize            int                         `xml:",omitempty"`
+	Provider                    string                      `xml:",omitempty"`
+	SubjectFromWebIdentityToken string                      `xml:",omitempty"`
 }
 
 // Retrieve credentials
@@ -107,10 +109,16 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 		return credentials.Value{}, err
 	}
 
+	curMinioCredValues, err := t.creds.Result.Credentials.Get()
+	if err != nil {
+		// fmt.Printf("error: %v", err)
+		return credentials.Value{}, err
+	}
+
 	return credentials.Value{
-		AccessKeyID:     t.creds.Result.Credentials.AccessKey,
-		SecretAccessKey: t.creds.Result.Credentials.SecretKey,
-		SessionToken:    t.creds.Result.Credentials.SessionToken,
+		AccessKeyID:     curMinioCredValues.AccessKeyID,
+		SecretAccessKey: curMinioCredValues.SecretAccessKey,
+		SessionToken:    curMinioCredValues.SessionToken,
 	}, nil
 
 }

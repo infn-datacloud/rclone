@@ -1,15 +1,6 @@
---- rclone/backend/s3/s3.go	2021-04-29 12:02:08.000000000 +0200
-+++ backend/s3/s3.go	2021-04-29 12:01:27.000000000 +0200
-@@ -58,7 +58,7 @@
- // Register with Fs
- func init() {
- 	fs.Register(&fs.RegInfo{
--		Name:        "s3",
-+		Name:        "s3iam",
- 		Description: "Amazon S3 Compliant Storage Providers including AWS, Alibaba, Ceph, Digital Ocean, Dreamhost, IBM COS, Minio, and Tencent COS",
- 		NewFs:       NewFs,
- 		CommandHelp: commandHelp,
-@@ -117,6 +117,15 @@
+--- rclone/backend/s3/s3.go	2021-07-29 18:53:44.000000000 +0200
++++ backend/s3/s3.go	2021-07-29 18:53:38.000000000 +0200
+@@ -119,6 +119,15 @@
  				Help:  "Get AWS credentials from the environment (env vars or IAM)",
  			}},
  		}, {
@@ -25,7 +16,7 @@
  			Name: "access_key_id",
  			Help: "AWS Access Key ID.\nLeave blank for anonymous access or runtime credentials.",
  		}, {
-@@ -1289,6 +1298,7 @@
+@@ -1318,6 +1327,7 @@
  type Options struct {
  	Provider              string               `config:"provider"`
  	EnvAuth               bool                 `config:"env_auth"`
@@ -33,7 +24,7 @@
  	AccessKeyID           string               `config:"access_key_id"`
  	SecretAccessKey       string               `config:"secret_access_key"`
  	Region                string               `config:"region"`
-@@ -1473,7 +1483,20 @@
+@@ -1503,7 +1513,20 @@
  		SessionToken:    opt.SessionToken,
  	}
  
@@ -55,7 +46,7 @@
  
  	def := defaults.Get()
  	def.Config.HTTPClient = lowTimeoutClient
-@@ -1486,6 +1509,12 @@
+@@ -1516,6 +1539,12 @@
  
  	// first provider to supply a credential set "wins"
  	providers := []credentials.Provider{
@@ -68,7 +59,7 @@
  		// use static credentials if they're present (checked by provider)
  		&credentials.StaticProvider{Value: v},
  
-@@ -1517,14 +1546,15 @@
+@@ -1542,14 +1571,14 @@
  			ExpiryWindow: 3 * time.Minute,
  		},
  	}
@@ -78,15 +69,14 @@
  	switch {
  	case opt.EnvAuth:
  		// No need for empty checks if "env_auth" is true
-+	// Disable anonymous credentials
  	case v.AccessKeyID == "" && v.SecretAccessKey == "":
  		// if no access key/secret and iam is explicitly disabled then fall back to anon interaction
 -		cred = credentials.AnonymousCredentials
-+		//cred = credentials.AnonymousCredentials
++		// cred = credentials.AnonymousCredentials // Disable anonymous credentials
  	case v.AccessKeyID == "":
  		return nil, nil, errors.New("access_key_id not found")
  	case v.SecretAccessKey == "":
-@@ -1543,7 +1573,7 @@
+@@ -1568,7 +1597,7 @@
  	awsConfig := aws.NewConfig().
  		WithMaxRetries(0). // Rely on rclone's retry logic
  		WithCredentials(cred).
@@ -95,7 +85,7 @@
  		WithS3ForcePathStyle(opt.ForcePathStyle).
  		WithS3UseAccelerate(opt.UseAccelerateEndpoint).
  		WithS3UsEast1RegionalEndpoint(endpoints.RegionalS3UsEast1Endpoint)
-@@ -1563,7 +1593,10 @@
+@@ -1588,7 +1617,10 @@
  		// Enable loading config options from ~/.aws/config (selected by AWS_PROFILE env)
  		awsSessionOpts.SharedConfigState = session.SharedConfigEnable
  		// Set the name of the profile if supplied
@@ -107,19 +97,3 @@
  	}
  	ses, err := session.NewSessionWithOptions(awsSessionOpts)
  	if err != nil {
-@@ -1700,9 +1733,12 @@
- 		f.setRoot(newRoot)
- 		_, err := f.NewObject(ctx, leaf)
- 		if err != nil {
--			// File doesn't exist or is a directory so return old f
--			f.setRoot(oldRoot)
--			return f, nil
-+			if err == fs.ErrorObjectNotFound || err == fs.ErrorNotAFile {
-+				// File doesn't exist or is a directory so return old f
-+				f.setRoot(oldRoot)
-+				return f, nil
-+			}
-+			return nil, err
- 		}
- 		// return an error with an fs which points to the parent
- 		return f, fs.ErrorIsFile
