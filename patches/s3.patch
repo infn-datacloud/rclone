@@ -1,6 +1,36 @@
---- rclone/backend/s3/s3.go	2021-07-29 18:53:44.000000000 +0200
-+++ backend/s3/s3.go	2021-07-29 18:53:38.000000000 +0200
-@@ -119,6 +119,15 @@
+--- rclone/backend/s3/s3.go	2021-08-03 18:16:26.000000000 +0200
++++ backend/s3/s3.go	2021-08-03 17:40:33.000000000 +0200
+@@ -6,10 +6,15 @@
+ 	"context"
+ 	"crypto/md5"
+ 	"crypto/tls"
++	"fmt"
++	"strings"
++	"time"
++
+ 	"encoding/base64"
+ 	"encoding/hex"
+ 	"encoding/xml"
+-	"fmt"
++
++	// "fmt" // Declared in authMinio.go
+ 	"io"
+ 	"net/http"
+ 	"net/url"
+@@ -17,9 +22,10 @@
+ 	"regexp"
+ 	"sort"
+ 	"strconv"
+-	"strings"
++
++	// "strings" // Declared in authMinio.go
+ 	"sync"
+-	"time"
++	// "time" // Declared in authMinio.go
+ 
+ 	"github.com/aws/aws-sdk-go/aws"
+ 	"github.com/aws/aws-sdk-go/aws/awserr"
+@@ -119,6 +125,15 @@
  				Help:  "Get AWS credentials from the environment (env vars or IAM)",
  			}},
  		}, {
@@ -16,15 +46,15 @@
  			Name: "access_key_id",
  			Help: "AWS Access Key ID.\nLeave blank for anonymous access or runtime credentials.",
  		}, {
-@@ -1318,6 +1327,7 @@
+@@ -1318,6 +1333,7 @@
  type Options struct {
  	Provider              string               `config:"provider"`
  	EnvAuth               bool                 `config:"env_auth"`
-+	Account               string               `config:"account"`
++	Account               string               `config:"account"` // Add account option
  	AccessKeyID           string               `config:"access_key_id"`
  	SecretAccessKey       string               `config:"secret_access_key"`
  	Region                string               `config:"region"`
-@@ -1503,7 +1513,20 @@
+@@ -1503,7 +1519,20 @@
  		SessionToken:    opt.SessionToken,
  	}
  
@@ -46,7 +76,7 @@
  
  	def := defaults.Get()
  	def.Config.HTTPClient = lowTimeoutClient
-@@ -1516,6 +1539,12 @@
+@@ -1516,6 +1545,12 @@
  
  	// first provider to supply a credential set "wins"
  	providers := []credentials.Provider{
@@ -59,7 +89,7 @@
  		// use static credentials if they're present (checked by provider)
  		&credentials.StaticProvider{Value: v},
  
-@@ -1542,14 +1571,14 @@
+@@ -1542,14 +1577,14 @@
  			ExpiryWindow: 3 * time.Minute,
  		},
  	}
@@ -76,7 +106,7 @@
  	case v.AccessKeyID == "":
  		return nil, nil, errors.New("access_key_id not found")
  	case v.SecretAccessKey == "":
-@@ -1568,7 +1597,7 @@
+@@ -1568,7 +1603,7 @@
  	awsConfig := aws.NewConfig().
  		WithMaxRetries(0). // Rely on rclone's retry logic
  		WithCredentials(cred).
@@ -85,7 +115,7 @@
  		WithS3ForcePathStyle(opt.ForcePathStyle).
  		WithS3UseAccelerate(opt.UseAccelerateEndpoint).
  		WithS3UsEast1RegionalEndpoint(endpoints.RegionalS3UsEast1Endpoint)
-@@ -1588,7 +1617,10 @@
+@@ -1588,7 +1623,10 @@
  		// Enable loading config options from ~/.aws/config (selected by AWS_PROFILE env)
  		awsSessionOpts.SharedConfigState = session.SharedConfigEnable
  		// Set the name of the profile if supplied

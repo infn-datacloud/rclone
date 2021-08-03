@@ -6,10 +6,15 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/tls"
+	"fmt"
+	"strings"
+	"time"
+
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
-	"fmt"
+
+	// "fmt" // Declared in authMinio.go
 	"io"
 	"net/http"
 	"net/url"
@@ -17,9 +22,10 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
-	"strings"
+
+	// "strings" // Declared in authMinio.go
 	"sync"
-	"time"
+	// "time" // Declared in authMinio.go
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"

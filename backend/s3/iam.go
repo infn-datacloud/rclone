@@ -7,7 +7,7 @@ import (
 	"net/url"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
-	minioCredetials "github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/rclone/rclone/fs"
 )
 
 // IAMProvider credential provider for oidc
@@ -40,12 +40,11 @@ type AssumedRoleUser struct {
 type WebIdentityResult struct {
 	AssumedRoleUser AssumedRoleUser `xml:",omitempty"`
 	Audience        string          `xml:",omitempty"`
-	// Minio credentials:
-	// - https://github.com/minio/minio-go/blob/cce8cf0f5350e0feea8112026429105e6ed6db58/pkg/credentials/credentials.go#L110
-	Credentials                 minioCredetials.Credentials `xml:",omitempty"`
-	PackedPolicySize            int                         `xml:",omitempty"`
-	Provider                    string                      `xml:",omitempty"`
-	SubjectFromWebIdentityToken string                      `xml:",omitempty"`
+	// Ref: https://github.com/minio/minio/blob/master/internal/auth/credentials.go#L96
+	Credentials                 Credentials `xml:",omitempty"`
+	PackedPolicySize            int         `xml:",omitempty"`
+	Provider                    string      `xml:",omitempty"`
+	SubjectFromWebIdentityToken string      `xml:",omitempty"`
 }
 
 // Retrieve credentials
@@ -61,9 +60,11 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 
 	dat, err := ioutil.ReadFile(".token")
 	if err != nil {
+		fs.LogPrintf(fs.LogLevelError, err, "IAM - token read error")
 		return credentials.Value{}, err
 	}
-	// fmt.Print(string(dat))
+
+	fs.LogPrintf(fs.LogLevelDebug, dat, "IAM - token")
 
 	token := string(dat)
 
@@ -78,11 +79,11 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 	//r, err := t.httpClient.Post(t.stsEndpoint, contentType, strings.NewReader(body.Encode()))
 	url, err := url.Parse(t.stsEndpoint + "?" + body.Encode())
 	if err != nil {
-		// fmt.Println(err)
+		fs.LogPrintf(fs.LogLevelError, err, "IAM - encode URL")
 		return credentials.Value{}, err
 	}
 
-	// fmt.Println(url)
+	fs.LogPrintf(fs.LogLevelDebug, url, "IAM - url")
 	req := http.Request{
 		Method: "POST",
 		URL:    url,
@@ -91,7 +92,7 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 	// TODO: retrieve token with https POST with t.httpClient
 	r, err := t.httpClient.Do(&req)
 	if err != nil {
-		// fmt.Println(err)
+		fs.LogPrintf(fs.LogLevelError, err, "IAM - http request")
 		return credentials.Value{}, err
 	}
 
@@ -99,26 +100,20 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 
 	rbody, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		// fmt.Printf("error: %v", err)
+		fs.LogPrintf(fs.LogLevelError, err, "IAM - read body")
 		return credentials.Value{}, err
 	}
 
 	err = xml.Unmarshal(rbody, t.creds)
 	if err != nil {
-		// fmt.Printf("error: %v", err)
-		return credentials.Value{}, err
-	}
-
-	curMinioCredValues, err := t.creds.Result.Credentials.Get()
-	if err != nil {
-		// fmt.Printf("error: %v", err)
+		fs.LogPrintf(fs.LogLevelError, err, "IAM - unmarshal credentials")
 		return credentials.Value{}, err
 	}
 
 	return credentials.Value{
-		AccessKeyID:     curMinioCredValues.AccessKeyID,
-		SecretAccessKey: curMinioCredValues.SecretAccessKey,
-		SessionToken:    curMinioCredValues.SessionToken,
+		AccessKeyID:     t.creds.Result.Credentials.AccessKey,
+		SecretAccessKey: t.creds.Result.Credentials.SecretKey,
+		SessionToken:    t.creds.Result.Credentials.SessionToken,
 	}, nil
 
 }

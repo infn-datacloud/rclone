@@ -42,6 +42,7 @@ clean:
 
 patch: prepare
 	cp backend/s3/iam.go rclone/backend/s3/
+	cp backend/s3/authMinio.go rclone/backend/s3/
 	cd rclone && go mod tidy
 
 build-plugin:
