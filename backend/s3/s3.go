@@ -64,7 +64,7 @@ import (
 func init() {
 	fs.Register(&fs.RegInfo{
 		Name:        "s3",
-		Description: "Amazon S3 Compliant Storage Providers including AWS, Alibaba, Ceph, Digital Ocean, Dreamhost, IBM COS, Minio, SeaweedFS, and Tencent COS",
+		Description: "Amazon S3 Compliant Storage Providers including AWS, Alibaba, Ceph, Digital Ocean, Dreamhost, IBM COS, INFN Cloud, Minio, SeaweedFS, and Tencent COS",
 		NewFs:       NewFs,
 		CommandHelp: commandHelp,
 		Options: []fs.Option{{
@@ -88,6 +88,9 @@ func init() {
 			}, {
 				Value: "IBMCOS",
 				Help:  "IBM COS S3",
+			}, {
+				Value: "INFN Cloud",
+				Help:  "INFN Cloud S3 with STS IAM",
 			}, {
 				Value: "Minio",
 				Help:  "Minio Object Storage",
@@ -125,12 +128,26 @@ func init() {
 				Help:  "Get AWS credentials from the environment (env vars or IAM)",
 			}},
 		}, {
-			Name:    "account",
-			Help:    "Get oidc-agent account name",
-			Default: "dodas",
+			Name:     "account",
+			Help:     "Get oidc-agent account name",
+			Default:  "",
+			Provider: "INFN Cloud",
 			Examples: []fs.OptionExample{{
-				Value: "dodas",
-				Help:  "If you can get the token with: oidc-token dodas",
+				Value: "NAME",
+				Help:  "If you can get the token with: oidc-token NAME",
+			},
+			},
+		}, {
+			Name:     "oidc_agent",
+			Help:     "Use oidc-agent to manage credentials",
+			Default:  false,
+			Provider: "INFN Cloud",
+			Examples: []fs.OptionExample{{
+				Value: "false",
+				Help:  "If you do not want to use oidc-agent mechanism",
+			}, {
+				Value: "true",
+				Help:  "If you want to use oidc-agent mechanism",
 			},
 			},
 		}, {
@@ -1333,7 +1350,8 @@ const (
 type Options struct {
 	Provider              string               `config:"provider"`
 	EnvAuth               bool                 `config:"env_auth"`
-	Account               string               `config:"account"` // Add account option
+	Account               string               `config:"account"`    // Add account option
+	UseOidcAgent          bool                 `config:"oidc_agent"` // Add oidc-agent option
 	AccessKeyID           string               `config:"access_key_id"`
 	SecretAccessKey       string               `config:"secret_access_key"`
 	Region                string               `config:"region"`
@@ -1546,9 +1564,10 @@ func s3Connection(ctx context.Context, opt *Options, client *http.Client) (*s3.S
 	// first provider to supply a credential set "wins"
 	providers := []credentials.Provider{
 		&IAMProvider{
-			stsEndpoint: opt.Endpoint,
-			accountname: opt.Account,
-			httpClient:  def.Config.HTTPClient,
+			stsEndpoint:  opt.Endpoint,
+			accountname:  opt.Account,
+			useOidcAgent: opt.UseOidcAgent,
+			httpClient:   def.Config.HTTPClient,
 		},
 
 		// use static credentials if they're present (checked by provider)

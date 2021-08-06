@@ -7,15 +7,17 @@ import (
 	"net/url"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/indigo-dc/liboidcagent-go"
 	"github.com/rclone/rclone/fs"
 )
 
 // IAMProvider credential provider for oidc
 type IAMProvider struct {
-	stsEndpoint string
-	accountname string
-	httpClient  *http.Client
-	creds       *AssumeRoleWithWebIdentityResponse
+	stsEndpoint  string
+	accountname  string
+	useOidcAgent bool
+	httpClient   *http.Client
+	creds        *AssumeRoleWithWebIdentityResponse
 }
 
 // AssumeRoleWithWebIdentityResponse the struct of the STS WebIdentity call response
@@ -49,24 +51,27 @@ type WebIdentityResult struct {
 
 // Retrieve credentials
 func (t *IAMProvider) Retrieve() (credentials.Value, error) {
+	var err error
+	var token string
 
-	//token, err := liboidcagent.GetAccessToken2(t.accountname, 60, "", "", "")
-	//if err != nil {
-	//	fmt.Printf("%s\n", err)
-	//	// Additional error handling
-	//} else {
-	//	fmt.Printf("Access token is: %s\n", token)
-	//}
-
-	dat, err := ioutil.ReadFile(".token")
-	if err != nil {
-		fs.LogPrintf(fs.LogLevelError, err, "IAM - token read error")
-		return credentials.Value{}, err
+	if t.useOidcAgent {
+		token, err = liboidcagent.GetAccessToken(liboidcagent.TokenRequest{
+			ShortName:      t.accountname,
+			MinValidPeriod: 900,
+		})
+		if err != nil {
+			return credentials.Value{}, err
+		}
+	} else {
+		dat, err := ioutil.ReadFile(".token")
+		if err != nil {
+			fs.LogPrintf(fs.LogLevelError, err, "IAM - token read error")
+			return credentials.Value{}, err
+		}
+		token = string(dat)
 	}
 
-	fs.LogPrintf(fs.LogLevelDebug, dat, "IAM - token")
-
-	token := string(dat)
+	fs.LogPrintf(fs.LogLevelDebug, token, "IAM - token")
 
 	//contentType := ""
 	body := url.Values{}
