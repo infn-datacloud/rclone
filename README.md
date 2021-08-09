@@ -21,6 +21,7 @@ You can use the `rclone config` command to create your configuration or create a
 
 <details>
 <summary>1. rclone config</summary>
+<br>
 
 ```bash
 $ ./rclone config
@@ -166,8 +167,8 @@ e/n/d/r/c/s/q> q
 
 <details>
 <summary>2. rclone config file from scratch</summary>
-
-You can create a config file starting from this template:
+<br>
+You can create a config file (`configFile.conf`) starting from this template:
 
 ```yaml
 [infncloud]
