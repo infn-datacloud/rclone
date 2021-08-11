@@ -65,13 +65,13 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 	} else {
 		dat, err := ioutil.ReadFile(".token")
 		if err != nil {
-			fs.LogPrintf(fs.LogLevelError, err, "IAM - token read error")
+			fs.Errorf(err, "IAM - token read error")
 			return credentials.Value{}, err
 		}
 		token = string(dat)
 	}
 
-	fs.LogPrintf(fs.LogLevelDebug, token, "IAM - token")
+	fs.Debugf(token, "IAM - token")
 
 	//contentType := ""
 	body := url.Values{}
@@ -84,11 +84,11 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 	//r, err := t.httpClient.Post(t.stsEndpoint, contentType, strings.NewReader(body.Encode()))
 	url, err := url.Parse(t.stsEndpoint + "?" + body.Encode())
 	if err != nil {
-		fs.LogPrintf(fs.LogLevelError, err, "IAM - encode URL")
+		fs.Errorf(err, "IAM - encode URL")
 		return credentials.Value{}, err
 	}
 
-	fs.LogPrintf(fs.LogLevelDebug, url, "IAM - url")
+	fs.Debugf(url, "IAM - url")
 	req := http.Request{
 		Method: "POST",
 		URL:    url,
@@ -97,7 +97,7 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 	// TODO: retrieve token with https POST with t.httpClient
 	r, err := t.httpClient.Do(&req)
 	if err != nil {
-		fs.LogPrintf(fs.LogLevelError, err, "IAM - http request")
+		fs.Errorf(err, "IAM - http request")
 		return credentials.Value{}, err
 	}
 
@@ -105,13 +105,13 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 
 	rbody, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		fs.LogPrintf(fs.LogLevelError, err, "IAM - read body")
+		fs.Errorf(err, "IAM - read body")
 		return credentials.Value{}, err
 	}
 
 	err = xml.Unmarshal(rbody, t.creds)
 	if err != nil {
-		fs.LogPrintf(fs.LogLevelError, err, "IAM - unmarshal credentials")
+		fs.Errorf(err, "IAM - unmarshal credentials")
 		return credentials.Value{}, err
 	}
 
