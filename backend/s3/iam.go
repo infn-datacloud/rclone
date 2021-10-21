@@ -7,15 +7,17 @@ import (
 	"net/url"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/minio/minio/pkg/auth"
+	"github.com/indigo-dc/liboidcagent-go"
+	"github.com/rclone/rclone/fs"
 )
 
 // IAMProvider credential provider for oidc
 type IAMProvider struct {
-	stsEndpoint string
-	accountname string
-	httpClient  *http.Client
-	creds       *AssumeRoleWithWebIdentityResponse
+	stsEndpoint  string
+	accountname  string
+	useOidcAgent bool
+	httpClient   *http.Client
+	creds        *AssumeRoleWithWebIdentityResponse
 }
 
 // AssumeRoleWithWebIdentityResponse the struct of the STS WebIdentity call response
@@ -38,32 +40,38 @@ type AssumedRoleUser struct {
 // WebIdentityResult - Contains the response to a successful AssumeRoleWithWebIdentity
 // request, including temporary credentials that can be used to make MinIO API requests.
 type WebIdentityResult struct {
-	AssumedRoleUser             AssumedRoleUser  `xml:",omitempty"`
-	Audience                    string           `xml:",omitempty"`
-	Credentials                 auth.Credentials `xml:",omitempty"`
-	PackedPolicySize            int              `xml:",omitempty"`
-	Provider                    string           `xml:",omitempty"`
-	SubjectFromWebIdentityToken string           `xml:",omitempty"`
+	AssumedRoleUser AssumedRoleUser `xml:",omitempty"`
+	Audience        string          `xml:",omitempty"`
+	// Ref: https://github.com/minio/minio/blob/master/internal/auth/credentials.go#L96
+	Credentials                 Credentials `xml:",omitempty"`
+	PackedPolicySize            int         `xml:",omitempty"`
+	Provider                    string      `xml:",omitempty"`
+	SubjectFromWebIdentityToken string      `xml:",omitempty"`
 }
 
 // Retrieve credentials
 func (t *IAMProvider) Retrieve() (credentials.Value, error) {
+	var err error
+	var token string
 
-	//token, err := liboidcagent.GetAccessToken2(t.accountname, 60, "", "", "")
-	//if err != nil {
-	//	fmt.Printf("%s\n", err)
-	//	// Additional error handling
-	//} else {
-	//	fmt.Printf("Access token is: %s\n", token)
-	//}
-
-	dat, err := ioutil.ReadFile(".token")
-	if err != nil {
-		return credentials.Value{}, err
+	if t.useOidcAgent {
+		token, err = liboidcagent.GetAccessToken(liboidcagent.TokenRequest{
+			ShortName:      t.accountname,
+			MinValidPeriod: 900,
+		})
+		if err != nil {
+			return credentials.Value{}, err
+		}
+	} else {
+		dat, err := ioutil.ReadFile(".token")
+		if err != nil {
+			fs.Errorf(err, "IAM - token read error")
+			return credentials.Value{}, err
+		}
+		token = string(dat)
 	}
-	// fmt.Print(string(dat))
 
-	token := string(dat)
+	fs.Debugf(token, "IAM - token")
 
 	//contentType := ""
 	body := url.Values{}
@@ -76,11 +84,11 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 	//r, err := t.httpClient.Post(t.stsEndpoint, contentType, strings.NewReader(body.Encode()))
 	url, err := url.Parse(t.stsEndpoint + "?" + body.Encode())
 	if err != nil {
-		// fmt.Println(err)
+		fs.Errorf(err, "IAM - encode URL")
 		return credentials.Value{}, err
 	}
 
-	// fmt.Println(url)
+	fs.Debugf(url, "IAM - url")
 	req := http.Request{
 		Method: "POST",
 		URL:    url,
@@ -89,7 +97,7 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 	// TODO: retrieve token with https POST with t.httpClient
 	r, err := t.httpClient.Do(&req)
 	if err != nil {
-		// fmt.Println(err)
+		fs.Errorf(err, "IAM - http request")
 		return credentials.Value{}, err
 	}
 
@@ -97,13 +105,13 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 
 	rbody, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		// fmt.Printf("error: %v", err)
+		fs.Errorf(err, "IAM - read body")
 		return credentials.Value{}, err
 	}
 
 	err = xml.Unmarshal(rbody, t.creds)
 	if err != nil {
-		// fmt.Printf("error: %v", err)
+		fs.Errorf(err, "IAM - unmarshal credentials")
 		return credentials.Value{}, err
 	}
 

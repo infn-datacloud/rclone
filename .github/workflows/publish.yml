@@ -19,12 +19,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        job_name: ["linux", "mac", "windows", "other_os", "go1.16"]
+        job_name: ["linux", "mac", "windows", "other_os", "go1.17"]
 
         include:
           - job_name: linux
             os: ubuntu-latest
-            go: "1.16.x"
+            go: "1.17.x"
             gotags: cmount
             build_flags: '-include "^linux/"'
             check: true
@@ -35,7 +35,7 @@ jobs:
 
           - job_name: mac
             os: macOS-latest
-            go: "1.16.x"
+            go: "1.17.x"
             gotags: "cmount"
             build_flags: '-include "^darwin/amd64" -cgo'
             quicktest: true
@@ -45,7 +45,7 @@ jobs:
 
           - job_name: windows
             os: windows-latest
-            go: "1.16.x"
+            go: "1.17.x"
             gotags: cmount
             build_flags: '-include "^windows/amd64" -cgo'
             build_args: "-buildmode exe"
@@ -56,15 +56,15 @@ jobs:
 
           - job_name: other_os
             os: ubuntu-latest
-            go: "1.16.x"
+            go: "1.17.x"
             build_flags: '-exclude "^(windows/|darwin/amd64|linux/)"'
             compile_all: true
             deploy: true
             publish: false
 
-          - job_name: go1.16
+          - job_name: go1.17
             os: ubuntu-latest
-            go: "1.16.x"
+            go: "1.17.x"
             quicktest: true
             racequicktest: true
             publish: false
@@ -188,7 +188,7 @@ jobs:
         shell: bash
         run: |
           make publish
-        if: matrix.publish == true
+        if: matrix.publish == true && github.event_name != 'pull_request'
 
       - name: Upload release binaries
         uses: alexellis/upload-assets@0.2.2
@@ -196,4 +196,4 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           asset_paths: '["./rclone_*"]'
-        if: matrix.publish == true
+        if: matrix.publish == true && github.event_name != 'pull_request'

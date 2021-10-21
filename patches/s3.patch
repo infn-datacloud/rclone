@@ -1,6 +1,94 @@
---- rclone/backend/s3/s3.go	2021-02-02 19:43:47.000000000 +0100
-+++ backend/s3/s3.go	2021-02-02 17:42:37.000000000 +0100
-@@ -1470,7 +1470,19 @@
+--- rclone/backend/s3/s3.go	2021-08-11 12:57:18.000000000 +0200
++++ backend/s3/s3.go	2021-08-06 18:35:48.000000000 +0200
+@@ -6,10 +6,15 @@
+ 	"context"
+ 	"crypto/md5"
+ 	"crypto/tls"
++	"fmt"
++	"strings"
++	"time"
++
+ 	"encoding/base64"
+ 	"encoding/hex"
+ 	"encoding/xml"
+-	"fmt"
++
++	// "fmt" // Declared in authMinio.go
+ 	"io"
+ 	"net/http"
+ 	"net/url"
+@@ -17,9 +22,10 @@
+ 	"regexp"
+ 	"sort"
+ 	"strconv"
+-	"strings"
++
++	// "strings" // Declared in authMinio.go
+ 	"sync"
+-	"time"
++	// "time" // Declared in authMinio.go
+ 
+ 	"github.com/aws/aws-sdk-go/aws"
+ 	"github.com/aws/aws-sdk-go/aws/awserr"
+@@ -58,7 +64,7 @@
+ func init() {
+ 	fs.Register(&fs.RegInfo{
+ 		Name:        "s3",
+-		Description: "Amazon S3 Compliant Storage Providers including AWS, Alibaba, Ceph, Digital Ocean, Dreamhost, IBM COS, Minio, SeaweedFS, and Tencent COS",
++		Description: "Amazon S3 Compliant Storage Providers including AWS, Alibaba, Ceph, Digital Ocean, Dreamhost, IBM COS, INFN Cloud, Minio, SeaweedFS, and Tencent COS",
+ 		NewFs:       NewFs,
+ 		CommandHelp: commandHelp,
+ 		Options: []fs.Option{{
+@@ -83,6 +89,9 @@
+ 				Value: "IBMCOS",
+ 				Help:  "IBM COS S3",
+ 			}, {
++				Value: "INFN Cloud",
++				Help:  "INFN Cloud S3 with STS IAM",
++			}, {
+ 				Value: "Minio",
+ 				Help:  "Minio Object Storage",
+ 			}, {
+@@ -119,6 +128,29 @@
+ 				Help:  "Get AWS credentials from the environment (env vars or IAM)",
+ 			}},
+ 		}, {
++			Name:     "account",
++			Help:     "Get oidc-agent account name",
++			Default:  "",
++			Provider: "INFN Cloud",
++			Examples: []fs.OptionExample{{
++				Value: "NAME",
++				Help:  "If you can get the token with: oidc-token NAME",
++			},
++			},
++		}, {
++			Name:     "oidc_agent",
++			Help:     "Use oidc-agent to manage credentials",
++			Default:  false,
++			Provider: "INFN Cloud",
++			Examples: []fs.OptionExample{{
++				Value: "false",
++				Help:  "If you do not want to use oidc-agent mechanism",
++			}, {
++				Value: "true",
++				Help:  "If you want to use oidc-agent mechanism",
++			},
++			},
++		}, {
+ 			Name: "access_key_id",
+ 			Help: "AWS Access Key ID.\nLeave blank for anonymous access or runtime credentials.",
+ 		}, {
+@@ -1318,6 +1350,8 @@
+ type Options struct {
+ 	Provider              string               `config:"provider"`
+ 	EnvAuth               bool                 `config:"env_auth"`
++	Account               string               `config:"account"`    // Add account option
++	UseOidcAgent          bool                 `config:"oidc_agent"` // Add oidc-agent option
+ 	AccessKeyID           string               `config:"access_key_id"`
+ 	SecretAccessKey       string               `config:"secret_access_key"`
+ 	Region                string               `config:"region"`
+@@ -1503,7 +1537,20 @@
  		SessionToken:    opt.SessionToken,
  	}
  
@@ -17,24 +105,26 @@
 +
 +	lowTimeoutClient := &http.Client{
 +		Transport: tr,
-+		Timeout:   1 * time.Second} // low timeout to ec2 metadata service
++		Timeout:   1 * time.Second,
++	} // low timeout to ec2 metadata service
  
  	def := defaults.Get()
  	def.Config.HTTPClient = lowTimeoutClient
-@@ -1483,6 +1495,12 @@
+@@ -1516,6 +1563,13 @@
  
  	// first provider to supply a credential set "wins"
  	providers := []credentials.Provider{
 +		&IAMProvider{
-+			stsEndpoint: opt.Endpoint,
-+			accountname: "demo",
-+			httpClient:  def.Config.HTTPClient,
++			stsEndpoint:  opt.Endpoint,
++			accountname:  opt.Account,
++			useOidcAgent: opt.UseOidcAgent,
++			httpClient:   def.Config.HTTPClient,
 +		},
 +
  		// use static credentials if they're present (checked by provider)
  		&credentials.StaticProvider{Value: v},
  
-@@ -1514,14 +1532,15 @@
+@@ -1542,14 +1596,14 @@
  			ExpiryWindow: 3 * time.Minute,
  		},
  	}
@@ -44,13 +134,31 @@
  	switch {
  	case opt.EnvAuth:
  		// No need for empty checks if "env_auth" is true
--	case v.AccessKeyID == "" && v.SecretAccessKey == "":
--		// if no access key/secret and iam is explicitly disabled then fall back to anon interaction
+ 	case v.AccessKeyID == "" && v.SecretAccessKey == "":
+ 		// if no access key/secret and iam is explicitly disabled then fall back to anon interaction
 -		cred = credentials.AnonymousCredentials
-+	// Disable anonymous credentials
-+	// case v.AccessKeyID == "" && v.SecretAccessKey == "":
-+	// 	// if no access key/secret and iam is explicitly disabled then fall back to anon interaction
-+	// 	cred = credentials.AnonymousCredentials
++		// cred = credentials.AnonymousCredentials // Disable anonymous credentials
  	case v.AccessKeyID == "":
  		return nil, nil, errors.New("access_key_id not found")
  	case v.SecretAccessKey == "":
+@@ -1568,7 +1622,7 @@
+ 	awsConfig := aws.NewConfig().
+ 		WithMaxRetries(0). // Rely on rclone's retry logic
+ 		WithCredentials(cred).
+-		WithHTTPClient(client).
++		WithHTTPClient(getClient(ctx, opt)).
+ 		WithS3ForcePathStyle(opt.ForcePathStyle).
+ 		WithS3UseAccelerate(opt.UseAccelerateEndpoint).
+ 		WithS3UsEast1RegionalEndpoint(endpoints.RegionalS3UsEast1Endpoint)
+@@ -1588,7 +1642,10 @@
+ 		// Enable loading config options from ~/.aws/config (selected by AWS_PROFILE env)
+ 		awsSessionOpts.SharedConfigState = session.SharedConfigEnable
+ 		// Set the name of the profile if supplied
+-		awsSessionOpts.Profile = opt.Profile
++		// awsSessionOpts.Profile = opt.Profile
++		// The session constructor (aws/session/mergeConfigSrcs) will only use the user's preferred credential source
++		// (from the shared config file) if the passed-in Options.Config.Credentials is nil.
++		awsSessionOpts.Config.Credentials = nil
+ 	}
+ 	ses, err := session.NewSessionWithOptions(awsSessionOpts)
+ 	if err != nil {

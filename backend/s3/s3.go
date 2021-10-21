@@ -6,10 +6,15 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/tls"
+	"fmt"
+	"strings"
+	"time"
+
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
-	"fmt"
+
+	// "fmt" // Declared in authMinio.go
 	"io"
 	"net/http"
 	"net/url"
@@ -17,23 +22,23 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
-	"strings"
+
+	// "strings" // Declared in authMinio.go
 	"sync"
-	"time"
+	// "time" // Declared in authMinio.go
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/corehandlers"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds"
-	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/defaults"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/ncw/swift"
+	"github.com/ncw/swift/v2"
 	"github.com/pkg/errors"
 	"github.com/rclone/rclone/fs"
 	"github.com/rclone/rclone/fs/config"
@@ -59,7 +64,7 @@ import (
 func init() {
 	fs.Register(&fs.RegInfo{
 		Name:        "s3",
-		Description: "Amazon S3 Compliant Storage Providers including AWS, Alibaba, Ceph, Digital Ocean, Dreamhost, IBM COS, Minio, and Tencent COS",
+		Description: "Amazon S3 Compliant Storage Providers including AWS, Alibaba, Ceph, Digital Ocean, Dreamhost, IBM COS, INFN Cloud, Minio, SeaweedFS, and Tencent COS",
 		NewFs:       NewFs,
 		CommandHelp: commandHelp,
 		Options: []fs.Option{{
@@ -84,6 +89,9 @@ func init() {
 				Value: "IBMCOS",
 				Help:  "IBM COS S3",
 			}, {
+				Value: "INFN Cloud",
+				Help:  "INFN Cloud S3 with STS IAM",
+			}, {
 				Value: "Minio",
 				Help:  "Minio Object Storage",
 			}, {
@@ -92,6 +100,9 @@ func init() {
 			}, {
 				Value: "Scaleway",
 				Help:  "Scaleway Object Storage",
+			}, {
+				Value: "SeaweedFS",
+				Help:  "SeaweedFS S3",
 			}, {
 				Value: "StackPath",
 				Help:  "StackPath Object Storage",
@@ -116,6 +127,29 @@ func init() {
 				Value: "true",
 				Help:  "Get AWS credentials from the environment (env vars or IAM)",
 			}},
+		}, {
+			Name:     "account",
+			Help:     "Get oidc-agent account name",
+			Default:  "",
+			Provider: "INFN Cloud",
+			Examples: []fs.OptionExample{{
+				Value: "NAME",
+				Help:  "If you can get the token with: oidc-token NAME",
+			},
+			},
+		}, {
+			Name:     "oidc_agent",
+			Help:     "Use oidc-agent to manage credentials",
+			Default:  false,
+			Provider: "INFN Cloud",
+			Examples: []fs.OptionExample{{
+				Value: "false",
+				Help:  "If you do not want to use oidc-agent mechanism",
+			}, {
+				Value: "true",
+				Help:  "If you want to use oidc-agent mechanism",
+			},
+			},
 		}, {
 			Name: "access_key_id",
 			Help: "AWS Access Key ID.\nLeave blank for anonymous access or runtime credentials.",
@@ -428,6 +462,12 @@ func init() {
 			Help:     "Endpoint for OSS API.",
 			Provider: "Alibaba",
 			Examples: []fs.OptionExample{{
+				Value: "oss-accelerate.aliyuncs.com",
+				Help:  "Global Accelerate",
+			}, {
+				Value: "oss-accelerate-overseas.aliyuncs.com",
+				Help:  "Global Accelerate (outside mainland China)",
+			}, {
 				Value: "oss-cn-hangzhou.aliyuncs.com",
 				Help:  "East China 1 (Hangzhou)",
 			}, {
@@ -444,10 +484,22 @@ func init() {
 				Help:  "North China 3 (Zhangjiakou)",
 			}, {
 				Value: "oss-cn-huhehaote.aliyuncs.com",
-				Help:  "North China 5 (Huhehaote)",
+				Help:  "North China 5 (Hohhot)",
+			}, {
+				Value: "oss-cn-wulanchabu.aliyuncs.com",
+				Help:  "North China 6 (Ulanqab)",
 			}, {
 				Value: "oss-cn-shenzhen.aliyuncs.com",
 				Help:  "South China 1 (Shenzhen)",
+			}, {
+				Value: "oss-cn-heyuan.aliyuncs.com",
+				Help:  "South China 2 (Heyuan)",
+			}, {
+				Value: "oss-cn-guangzhou.aliyuncs.com",
+				Help:  "South China 3 (Guangzhou)",
+			}, {
+				Value: "oss-cn-chengdu.aliyuncs.com",
+				Help:  "West China 1 (Chengdu)",
 			}, {
 				Value: "oss-cn-hongkong.aliyuncs.com",
 				Help:  "Hong Kong (Hong Kong)",
@@ -593,6 +645,10 @@ func init() {
 				Value:    "sgp1.digitaloceanspaces.com",
 				Help:     "Digital Ocean Spaces Singapore 1",
 				Provider: "DigitalOcean",
+			}, {
+				Value:    "localhost:8333",
+				Help:     "SeaweedFS S3 localhost",
+				Provider: "SeaweedFS",
 			}, {
 				Value:    "s3.wasabisys.com",
 				Help:     "Wasabi US East endpoint",
@@ -1017,7 +1073,7 @@ If you leave it blank, this is calculated automatically from the sse_customer_ke
 			Help: `Cutoff for switching to chunked upload
 
 Any files larger than this will be uploaded in chunks of chunk_size.
-The minimum is 0 and the maximum is 5GB.`,
+The minimum is 0 and the maximum is 5 GiB.`,
 			Default:  defaultUploadCutoff,
 			Advanced: true,
 		}, {
@@ -1039,9 +1095,9 @@ Rclone will automatically increase the chunk size when uploading a
 large file of known size to stay below the 10,000 chunks limit.
 
 Files of unknown size are uploaded with the configured
-chunk_size. Since the default chunk size is 5MB and there can be at
+chunk_size. Since the default chunk size is 5 MiB and there can be at
 most 10,000 chunks, this means that by default the maximum size of
-a file you can stream upload is 48GB.  If you wish to stream upload
+a file you can stream upload is 48 GiB.  If you wish to stream upload
 larger files then you will need to increase chunk_size.`,
 			Default:  minChunkSize,
 			Advanced: true,
@@ -1067,7 +1123,7 @@ large file of a known size to stay below this number of chunks limit.
 Any files larger than this that need to be server-side copied will be
 copied in chunks of this size.
 
-The minimum is 0 and the maximum is 5GB.`,
+The minimum is 0 and the maximum is 5 GiB.`,
 			Default:  fs.SizeSuffix(maxSizeForCopy),
 			Advanced: true,
 		}, {
@@ -1222,6 +1278,11 @@ very small even with this flag.
 			Default:  false,
 			Advanced: true,
 		}, {
+			Name:     "no_head_object",
+			Help:     `If set, don't HEAD objects`,
+			Default:  false,
+			Advanced: true,
+		}, {
 			Name:     config.ConfigEncoding,
 			Help:     config.ConfigEncodingHelp,
 			Advanced: true,
@@ -1271,7 +1332,7 @@ See: https://github.com/rclone/rclone/issues/4673, https://github.com/rclone/rcl
 const (
 	metaMtime   = "Mtime"     // the meta key to store mtime in - e.g. X-Amz-Meta-Mtime
 	metaMD5Hash = "Md5chksum" // the meta key to store md5hash in
-	// The maximum size of object we can COPY - this should be 5GiB but is < 5GB for b2 compatibility
+	// The maximum size of object we can COPY - this should be 5 GiB but is < 5 GB for b2 compatibility
 	// See https://forum.rclone.org/t/copying-files-within-a-b2-bucket/16680/76
 	maxSizeForCopy      = 4768 * 1024 * 1024
 	maxUploadParts      = 10000 // maximum allowed number of parts in a multi-part upload
@@ -1289,6 +1350,8 @@ const (
 type Options struct {
 	Provider              string               `config:"provider"`
 	EnvAuth               bool                 `config:"env_auth"`
+	Account               string               `config:"account"`    // Add account option
+	UseOidcAgent          bool                 `config:"oidc_agent"` // Add oidc-agent option
 	AccessKeyID           string               `config:"access_key_id"`
 	SecretAccessKey       string               `config:"secret_access_key"`
 	Region                string               `config:"region"`
@@ -1319,6 +1382,7 @@ type Options struct {
 	ListChunk             int64                `config:"list_chunk"`
 	NoCheckBucket         bool                 `config:"no_check_bucket"`
 	NoHead                bool                 `config:"no_head"`
+	NoHeadObject          bool                 `config:"no_head_object"`
 	Enc                   encoder.MultiEncoder `config:"encoding"`
 	MemoryPoolFlushTime   fs.Duration          `config:"memory_pool_flush_time"`
 	MemoryPoolUseMmap     bool                 `config:"memory_pool_use_mmap"`
@@ -1399,7 +1463,10 @@ var retryErrorCodes = []int{
 //S3 is pretty resilient, and the built in retry handling is probably sufficient
 // as it should notice closed connections and timeouts which are the most likely
 // sort of failure modes
-func (f *Fs) shouldRetry(err error) (bool, error) {
+func (f *Fs) shouldRetry(ctx context.Context, err error) (bool, error) {
+	if fserrors.ContextError(ctx, &err) {
+		return false, err
+	}
 	// If this is an awserr object, try and extract more useful information to determine if we should retry
 	if awsError, ok := err.(awserr.Error); ok {
 		// Simple case, check the original embedded error in case it's generically retryable
@@ -1411,7 +1478,7 @@ func (f *Fs) shouldRetry(err error) (bool, error) {
 			// 301 if wrong region for bucket - can only update if running from a bucket
 			if f.rootBucket != "" {
 				if reqErr.StatusCode() == http.StatusMovedPermanently {
-					urfbErr := f.updateRegionForBucket(f.rootBucket)
+					urfbErr := f.updateRegionForBucket(ctx, f.rootBucket)
 					if urfbErr != nil {
 						fs.Errorf(f, "Failed to update region for bucket: %v", urfbErr)
 						return false, err
@@ -1462,7 +1529,7 @@ func getClient(ctx context.Context, opt *Options) *http.Client {
 }
 
 // s3Connection makes a connection to s3
-func s3Connection(ctx context.Context, opt *Options) (*s3.S3, *session.Session, error) {
+func s3Connection(ctx context.Context, opt *Options, client *http.Client) (*s3.S3, *session.Session, error) {
 	// Make the auth
 	v := credentials.Value{
 		AccessKeyID:     opt.AccessKeyID,
@@ -1482,7 +1549,8 @@ func s3Connection(ctx context.Context, opt *Options) (*s3.S3, *session.Session, 
 
 	lowTimeoutClient := &http.Client{
 		Transport: tr,
-		Timeout:   1 * time.Second} // low timeout to ec2 metadata service
+		Timeout:   1 * time.Second,
+	} // low timeout to ec2 metadata service
 
 	def := defaults.Get()
 	def.Config.HTTPClient = lowTimeoutClient
@@ -1496,9 +1564,10 @@ func s3Connection(ctx context.Context, opt *Options) (*s3.S3, *session.Session, 
 	// first provider to supply a credential set "wins"
 	providers := []credentials.Provider{
 		&IAMProvider{
-			stsEndpoint: opt.Endpoint,
-			accountname: "demo",
-			httpClient:  def.Config.HTTPClient,
+			stsEndpoint:  opt.Endpoint,
+			accountname:  opt.Account,
+			useOidcAgent: opt.UseOidcAgent,
+			httpClient:   def.Config.HTTPClient,
 		},
 
 		// use static credentials if they're present (checked by provider)
@@ -1526,21 +1595,15 @@ func s3Connection(ctx context.Context, opt *Options) (*s3.S3, *session.Session, 
 			}),
 			ExpiryWindow: 3 * time.Minute,
 		},
-
-		// Pick up IAM role if we are in EKS
-		&stscreds.WebIdentityRoleProvider{
-			ExpiryWindow: 3 * time.Minute,
-		},
 	}
 	cred := credentials.NewChainCredentials(providers[0:1]) // Enable only IAM
 
 	switch {
 	case opt.EnvAuth:
 		// No need for empty checks if "env_auth" is true
-	// Disable anonymous credentials
 	case v.AccessKeyID == "" && v.SecretAccessKey == "":
 		// if no access key/secret and iam is explicitly disabled then fall back to anon interaction
-		//cred = credentials.AnonymousCredentials
+		// cred = credentials.AnonymousCredentials // Disable anonymous credentials
 	case v.AccessKeyID == "":
 		return nil, nil, errors.New("access_key_id not found")
 	case v.SecretAccessKey == "":
@@ -1578,6 +1641,8 @@ func s3Connection(ctx context.Context, opt *Options) (*s3.S3, *session.Session, 
 	if opt.EnvAuth && opt.AccessKeyID == "" && opt.SecretAccessKey == "" {
 		// Enable loading config options from ~/.aws/config (selected by AWS_PROFILE env)
 		awsSessionOpts.SharedConfigState = session.SharedConfigEnable
+		// Set the name of the profile if supplied
+		// awsSessionOpts.Profile = opt.Profile
 		// The session constructor (aws/session/mergeConfigSrcs) will only use the user's preferred credential source
 		// (from the shared config file) if the passed-in Options.Config.Credentials is nil.
 		awsSessionOpts.Config.Credentials = nil
@@ -1666,7 +1731,8 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 		md5sumBinary := md5.Sum([]byte(opt.SSECustomerKey))
 		opt.SSECustomerKeyMD5 = base64.StdEncoding.EncodeToString(md5sumBinary[:])
 	}
-	c, ses, err := s3Connection(ctx, opt)
+	srv := getClient(ctx, opt)
+	c, ses, err := s3Connection(ctx, opt, srv)
 	if err != nil {
 		return nil, err
 	}
@@ -1681,7 +1747,7 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 		ses:   ses,
 		pacer: fs.NewPacer(ctx, pacer.NewS3(pacer.MinSleep(minSleep))),
 		cache: bucket.NewCache(),
-		srv:   getClient(ctx, opt),
+		srv:   srv,
 		pool: pool.New(
 			time.Duration(opt.MemoryPoolFlushTime),
 			int(opt.ChunkSize),
@@ -1709,19 +1775,16 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 		GetTier:           true,
 		SlowModTime:       true,
 	}).Fill(ctx, f)
-	if f.rootBucket != "" && f.rootDirectory != "" {
+	if f.rootBucket != "" && f.rootDirectory != "" && !opt.NoHeadObject && !strings.HasSuffix(root, "/") {
 		// Check to see if the (bucket,directory) is actually an existing file
 		oldRoot := f.root
 		newRoot, leaf := path.Split(oldRoot)
 		f.setRoot(newRoot)
 		_, err := f.NewObject(ctx, leaf)
 		if err != nil {
-			if err == fs.ErrorObjectNotFound || err == fs.ErrorNotAFile {
-				// File doesn't exist or is a directory so return old f
-				f.setRoot(oldRoot)
-				return f, nil
-			}
-			return nil, err
+			// File doesn't exist or is a directory so return old f
+			f.setRoot(oldRoot)
+			return f, nil
 		}
 		// return an error with an fs which points to the parent
 		return f, fs.ErrorIsFile
@@ -1749,7 +1812,7 @@ func (f *Fs) newObjectWithInfo(ctx context.Context, remote string, info *s3.Obje
 		o.setMD5FromEtag(aws.StringValue(info.ETag))
 		o.bytes = aws.Int64Value(info.Size)
 		o.storageClass = aws.StringValue(info.StorageClass)
-	} else {
+	} else if !o.fs.opt.NoHeadObject {
 		err := o.readMetaData(ctx) // reads info and meta, returning an error
 		if err != nil {
 			return nil, err
@@ -1765,7 +1828,7 @@ func (f *Fs) NewObject(ctx context.Context, remote string) (fs.Object, error) {
 }
 
 // Gets the bucket location
-func (f *Fs) getBucketLocation(bucket string) (string, error) {
+func (f *Fs) getBucketLocation(ctx context.Context, bucket string) (string, error) {
 	req := s3.GetBucketLocationInput{
 		Bucket: &bucket,
 	}
@@ -1773,7 +1836,7 @@ func (f *Fs) getBucketLocation(bucket string) (string, error) {
 	var err error
 	err = f.pacer.Call(func() (bool, error) {
 		resp, err = f.c.GetBucketLocation(&req)
-		return f.shouldRetry(err)
+		return f.shouldRetry(ctx, err)
 	})
 	if err != nil {
 		return "", err
@@ -1783,8 +1846,8 @@ func (f *Fs) getBucketLocation(bucket string) (string, error) {
 
 // Updates the region for the bucket by reading the region from the
 // bucket then updating the session.
-func (f *Fs) updateRegionForBucket(bucket string) error {
-	region, err := f.getBucketLocation(bucket)
+func (f *Fs) updateRegionForBucket(ctx context.Context, bucket string) error {
+	region, err := f.getBucketLocation(ctx, bucket)
 	if err != nil {
 		return errors.Wrap(err, "reading bucket location failed")
 	}
@@ -1798,7 +1861,7 @@ func (f *Fs) updateRegionForBucket(bucket string) error {
 	// Make a new session with the new region
 	oldRegion := f.opt.Region
 	f.opt.Region = region
-	c, ses, err := s3Connection(f.ctx, &f.opt)
+	c, ses, err := s3Connection(f.ctx, &f.opt, f.srv)
 	if err != nil {
 		return errors.Wrap(err, "creating new session failed")
 	}
@@ -1878,7 +1941,7 @@ func (f *Fs) list(ctx context.Context, bucket, directory, prefix string, addBuck
 					}
 				}
 			}
-			return f.shouldRetry(err)
+			return f.shouldRetry(ctx, err)
 		})
 		if err != nil {
 			if awsErr, ok := err.(awserr.RequestFailure); ok {
@@ -2025,7 +2088,7 @@ func (f *Fs) listBuckets(ctx context.Context) (entries fs.DirEntries, err error)
 	var resp *s3.ListBucketsOutput
 	err = f.pacer.Call(func() (bool, error) {
 		resp, err = f.c.ListBucketsWithContext(ctx, &req)
-		return f.shouldRetry(err)
+		return f.shouldRetry(ctx, err)
 	})
 	if err != nil {
 		return nil, err
@@ -2140,7 +2203,7 @@ func (f *Fs) bucketExists(ctx context.Context, bucket string) (bool, error) {
 	}
 	err := f.pacer.Call(func() (bool, error) {
 		_, err := f.c.HeadBucketWithContext(ctx, &req)
-		return f.shouldRetry(err)
+		return f.shouldRetry(ctx, err)
 	})
 	if err == nil {
 		return true, nil
@@ -2176,7 +2239,7 @@ func (f *Fs) makeBucket(ctx context.Context, bucket string) error {
 		}
 		err := f.pacer.Call(func() (bool, error) {
 			_, err := f.c.CreateBucketWithContext(ctx, &req)
-			return f.shouldRetry(err)
+			return f.shouldRetry(ctx, err)
 		})
 		if err == nil {
 			fs.Infof(f, "Bucket %q created with ACL %q", bucket, f.opt.BucketACL)
@@ -2206,7 +2269,7 @@ func (f *Fs) Rmdir(ctx context.Context, dir string) error {
 		}
 		err := f.pacer.Call(func() (bool, error) {
 			_, err := f.c.DeleteBucketWithContext(ctx, &req)
-			return f.shouldRetry(err)
+			return f.shouldRetry(ctx, err)
 		})
 		if err == nil {
 			fs.Infof(f, "Bucket %q deleted", bucket)
@@ -2266,7 +2329,7 @@ func (f *Fs) copy(ctx context.Context, req *s3.CopyObjectInput, dstBucket, dstPa
 	}
 	return f.pacer.Call(func() (bool, error) {
 		_, err := f.c.CopyObjectWithContext(ctx, req)
-		return f.shouldRetry(err)
+		return f.shouldRetry(ctx, err)
 	})
 }
 
@@ -2310,7 +2373,7 @@ func (f *Fs) copyMultipart(ctx context.Context, copyReq *s3.CopyObjectInput, dst
 	if err := f.pacer.Call(func() (bool, error) {
 		var err error
 		cout, err = f.c.CreateMultipartUploadWithContext(ctx, req)
-		return f.shouldRetry(err)
+		return f.shouldRetry(ctx, err)
 	}); err != nil {
 		return err
 	}
@@ -2326,7 +2389,7 @@ func (f *Fs) copyMultipart(ctx context.Context, copyReq *s3.CopyObjectInput, dst
 				UploadId:     uid,
 				RequestPayer: req.RequestPayer,
 			})
-			return f.shouldRetry(err)
+			return f.shouldRetry(ctx, err)
 		})
 	})()
 
@@ -2349,7 +2412,7 @@ func (f *Fs) copyMultipart(ctx context.Context, copyReq *s3.CopyObjectInput, dst
 			uploadPartReq.CopySourceRange = aws.String(calculateRange(partSize, partNum-1, numParts, srcSize))
 			uout, err := f.c.UploadPartCopyWithContext(ctx, uploadPartReq)
 			if err != nil {
-				return f.shouldRetry(err)
+				return f.shouldRetry(ctx, err)
 			}
 			parts = append(parts, &s3.CompletedPart{
 				PartNumber: &partNum,
@@ -2371,7 +2434,7 @@ func (f *Fs) copyMultipart(ctx context.Context, copyReq *s3.CopyObjectInput, dst
 			RequestPayer: req.RequestPayer,
 			UploadId:     uid,
 		})
-		return f.shouldRetry(err)
+		return f.shouldRetry(ctx, err)
 	})
 }
 
@@ -2602,7 +2665,7 @@ func (f *Fs) Command(ctx context.Context, name string, arg []string, opt map[str
 			reqCopy.Key = &bucketPath
 			err = f.pacer.Call(func() (bool, error) {
 				_, err = f.c.RestoreObject(&reqCopy)
-				return f.shouldRetry(err)
+				return f.shouldRetry(ctx, err)
 			})
 			if err != nil {
 				st.Status = err.Error()
@@ -2650,7 +2713,7 @@ func (f *Fs) listMultipartUploads(ctx context.Context, bucket, key string) (uplo
 		var resp *s3.ListMultipartUploadsOutput
 		err = f.pacer.Call(func() (bool, error) {
 			resp, err = f.c.ListMultipartUploads(&req)
-			return f.shouldRetry(err)
+			return f.shouldRetry(ctx, err)
 		})
 		if err != nil {
 			return nil, errors.Wrapf(err, "list multipart uploads bucket %q key %q", bucket, key)
@@ -2825,7 +2888,7 @@ func (o *Object) headObject(ctx context.Context) (resp *s3.HeadObjectOutput, err
 	err = o.fs.pacer.Call(func() (bool, error) {
 		var err error
 		resp, err = o.fs.c.HeadObjectWithContext(ctx, &req)
-		return o.fs.shouldRetry(err)
+		return o.fs.shouldRetry(ctx, err)
 	})
 	if err != nil {
 		if awsErr, ok := err.(awserr.RequestFailure); ok {
@@ -2850,15 +2913,23 @@ func (o *Object) readMetaData(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
+	if resp.LastModified == nil {
+		fs.Logf(o, "Failed to read last modified from HEAD: %v", err)
+	}
+	o.setMetaData(resp.ETag, resp.ContentLength, resp.LastModified, resp.Metadata, resp.ContentType, resp.StorageClass)
+	return nil
+}
+
+func (o *Object) setMetaData(etag *string, contentLength *int64, lastModified *time.Time, meta map[string]*string, mimeType *string, storageClass *string) {
 	var size int64
 	// Ignore missing Content-Length assuming it is 0
 	// Some versions of ceph do this due their apache proxies
-	if resp.ContentLength != nil {
-		size = *resp.ContentLength
+	if contentLength != nil {
+		size = *contentLength
 	}
-	o.setMD5FromEtag(aws.StringValue(resp.ETag))
+	o.setMD5FromEtag(aws.StringValue(etag))
 	o.bytes = size
-	o.meta = resp.Metadata
+	o.meta = meta
 	if o.meta == nil {
 		o.meta = map[string]*string{}
 	}
@@ -2873,15 +2944,13 @@ func (o *Object) readMetaData(ctx context.Context) (err error) {
 			o.md5 = hex.EncodeToString(md5sumBytes)
 		}
 	}
-	o.storageClass = aws.StringValue(resp.StorageClass)
-	if resp.LastModified == nil {
-		fs.Logf(o, "Failed to read last modified from HEAD: %v", err)
+	o.storageClass = aws.StringValue(storageClass)
+	if lastModified == nil {
 		o.lastModified = time.Now()
 	} else {
-		o.lastModified = *resp.LastModified
+		o.lastModified = *lastModified
 	}
-	o.mimeType = aws.StringValue(resp.ContentType)
-	return nil
+	o.mimeType = aws.StringValue(mimeType)
 }
 
 // ModTime returns the modification time of the object
@@ -2981,7 +3050,7 @@ func (o *Object) Open(ctx context.Context, options ...fs.OpenOption) (in io.Read
 		var err error
 		httpReq.HTTPRequest = httpReq.HTTPRequest.WithContext(ctx)
 		err = httpReq.Send()
-		return o.fs.shouldRetry(err)
+		return o.fs.shouldRetry(ctx, err)
 	})
 	if err, ok := err.(awserr.RequestFailure); ok {
 		if err.Code() == "InvalidObjectState" {
@@ -2991,6 +3060,26 @@ func (o *Object) Open(ctx context.Context, options ...fs.OpenOption) (in io.Read
 	if err != nil {
 		return nil, err
 	}
+	if resp.LastModified == nil {
+		fs.Logf(o, "Failed to read last modified: %v", err)
+	}
+	// read size from ContentLength or ContentRange
+	size := resp.ContentLength
+	if resp.ContentRange != nil {
+		var contentRange = *resp.ContentRange
+		slash := strings.IndexRune(contentRange, '/')
+		if slash >= 0 {
+			i, err := strconv.ParseInt(contentRange[slash+1:], 10, 64)
+			if err == nil {
+				size = &i
+			} else {
+				fs.Debugf(o, "Failed to find parse integer from in %q: %v", contentRange, err)
+			}
+		} else {
+			fs.Debugf(o, "Failed to find length in %q", contentRange)
+		}
+	}
+	o.setMetaData(resp.ETag, size, resp.LastModified, resp.Metadata, resp.ContentType, resp.StorageClass)
 	return resp.Body, nil
 }
 
@@ -3016,9 +3105,9 @@ func (o *Object) uploadMultipart(ctx context.Context, req *s3.PutObjectInput, si
 	// calculate size of parts
 	partSize := int(f.opt.ChunkSize)
 
-	// size can be -1 here meaning we don't know the size of the incoming file.  We use ChunkSize
-	// buffers here (default 5MB). With a maximum number of parts (10,000) this will be a file of
-	// 48GB which seems like a not too unreasonable limit.
+	// size can be -1 here meaning we don't know the size of the incoming file. We use ChunkSize
+	// buffers here (default 5 MiB). With a maximum number of parts (10,000) this will be a file of
+	// 48 GiB which seems like a not too unreasonable limit.
 	if size == -1 {
 		warnStreamUpload.Do(func() {
 			fs.Logf(f, "Streaming uploads using chunk size %v will have maximum file size of %v",
@@ -3027,7 +3116,7 @@ func (o *Object) uploadMultipart(ctx context.Context, req *s3.PutObjectInput, si
 	} else {
 		// Adjust partSize until the number of parts is small enough.
 		if size/int64(partSize) >= uploadParts {
-			// Calculate partition size rounded up to the nearest MB
+			// Calculate partition size rounded up to the nearest MiB
 			partSize = int((((size / uploadParts) >> 20) + 1) << 20)
 		}
 	}
@@ -3040,7 +3129,7 @@ func (o *Object) uploadMultipart(ctx context.Context, req *s3.PutObjectInput, si
 	err = f.pacer.Call(func() (bool, error) {
 		var err error
 		cout, err = f.c.CreateMultipartUploadWithContext(ctx, &mReq)
-		return f.shouldRetry(err)
+		return f.shouldRetry(ctx, err)
 	})
 	if err != nil {
 		return errors.Wrap(err, "multipart upload failed to initialise")
@@ -3059,7 +3148,7 @@ func (o *Object) uploadMultipart(ctx context.Context, req *s3.PutObjectInput, si
 				UploadId:     uid,
 				RequestPayer: req.RequestPayer,
 			})
-			return f.shouldRetry(err)
+			return f.shouldRetry(ctx, err)
 		})
 		if errCancel != nil {
 			fs.Debugf(o, "Failed to cancel multipart upload: %v", errCancel)
@@ -3135,7 +3224,7 @@ func (o *Object) uploadMultipart(ctx context.Context, req *s3.PutObjectInput, si
 				uout, err := f.c.UploadPartWithContext(gCtx, uploadPartReq)
 				if err != nil {
 					if partNum <= int64(concurrency) {
-						return f.shouldRetry(err)
+						return f.shouldRetry(ctx, err)
 					}
 					// retry all chunks once have done the first batch
 					return true, err
@@ -3175,7 +3264,7 @@ func (o *Object) uploadMultipart(ctx context.Context, req *s3.PutObjectInput, si
 			RequestPayer: req.RequestPayer,
 			UploadId:     uid,
 		})
-		return f.shouldRetry(err)
+		return f.shouldRetry(ctx, err)
 	})
 	if err != nil {
 		return errors.Wrap(err, "multipart upload failed to finalise")
@@ -3317,11 +3406,10 @@ func (o *Object) Update(ctx context.Context, in io.Reader, src fs.ObjectInfo, op
 		}
 
 		// create the vanilla http request
-		httpReq, err := http.NewRequest("PUT", url, in)
+		httpReq, err := http.NewRequestWithContext(ctx, "PUT", url, in)
 		if err != nil {
 			return errors.Wrap(err, "s3 upload: new request")
 		}
-		httpReq = httpReq.WithContext(ctx) // go1.13 can use NewRequestWithContext
 
 		// set the headers we signed and the length
 		httpReq.Header = headers
@@ -3331,11 +3419,11 @@ func (o *Object) Update(ctx context.Context, in io.Reader, src fs.ObjectInfo, op
 			var err error
 			resp, err = o.fs.srv.Do(httpReq)
 			if err != nil {
-				return o.fs.shouldRetry(err)
+				return o.fs.shouldRetry(ctx, err)
 			}
 			body, err := rest.ReadBody(resp)
 			if err != nil {
-				return o.fs.shouldRetry(err)
+				return o.fs.shouldRetry(ctx, err)
 			}
 			if resp.StatusCode >= 200 && resp.StatusCode < 299 {
 				return false, nil
@@ -3386,7 +3474,7 @@ func (o *Object) Remove(ctx context.Context) error {
 	}
 	err := o.fs.pacer.Call(func() (bool, error) {
 		_, err := o.fs.c.DeleteObjectWithContext(ctx, &req)
-		return o.fs.shouldRetry(err)
+		return o.fs.shouldRetry(ctx, err)
 	})
 	return err
 }
