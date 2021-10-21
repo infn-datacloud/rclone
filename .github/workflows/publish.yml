@@ -188,7 +188,7 @@ jobs:
         shell: bash
         run: |
           make publish
-        if: matrix.publish == true
+        if: matrix.publish == true && github.event_name != 'pull_request'
 
       - name: Upload release binaries
         uses: alexellis/upload-assets@0.2.2
@@ -196,4 +196,4 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           asset_paths: '["./rclone_*"]'
-        if: matrix.publish == true
+        if: matrix.publish == true && github.event_name != 'pull_request'
