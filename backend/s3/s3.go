@@ -1549,7 +1549,7 @@ func s3Connection(ctx context.Context, opt *Options, client *http.Client) (*s3.S
 
 	lowTimeoutClient := &http.Client{
 		Transport: tr,
-		Timeout:   1 * time.Second,
+		Timeout:   30 * time.Second,
 	} // low timeout to ec2 metadata service
 
 	def := defaults.Get()
