@@ -1,7 +1,7 @@
 ORIGINAL_FILE=rclone/backend/s3/s3.go
 UPDATED_FILE=backend/s3/s3.go
 PATCH_FILE=patches/s3.patch
-RCLONE_VERSION=v1.56.2
+RCLONE_VERSION=v1.58.1
 
 CUR_OS=""
 
