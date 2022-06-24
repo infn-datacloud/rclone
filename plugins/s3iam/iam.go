@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"fmt"
 
-	liboidcagent "github.com/indigo-dc/liboidcagent-go"
+	"github.com/indigo-dc/liboidcagent-go"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/minio/minio/pkg/auth"
