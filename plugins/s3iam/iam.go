@@ -10,7 +10,7 @@ import (
 	"github.com/indigo-dc/liboidcagent-go"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/minio/minio/pkg/auth"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 // IAMProvider credential provider for oidc
