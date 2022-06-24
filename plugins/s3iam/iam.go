@@ -50,11 +50,9 @@ type WebIdentityResult struct {
 }
 
 // Retrieve credentials
-func (t *IAMProvider) Retrieve() (credentials.Value, error) {
-
+func (t *IAMProvider) Retrieve() (credentials.Value, error) {	
 	
-	
-	token, err := liboidcagent.GetAccessToken(liboidcagent.TokenRequest{
+	token, err := GetAccessToken(TokenRequest{
 	  ShortName:  t.accountname,
 	  MinValidPeriod: 60,
 	  Audiences: "minio-af-it",
