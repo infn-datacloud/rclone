@@ -51,7 +51,13 @@ type WebIdentityResult struct {
 // Retrieve credentials
 func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 
-	token, err := liboidcagent.GetAccessToken2(t.accountname, 60, "", "", "")
+	
+	
+	token, err := liboidcagent.GetAccessToken(liboidcagent.TokenRequest{
+	  ShortName:  t.accountname,
+	  MinValidPeriod: 60,
+	  Audiences: "minio-af-it",
+	})
 	if err != nil {
 		return credentials.Value{}, err
 	}
