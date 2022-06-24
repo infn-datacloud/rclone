@@ -4,7 +4,7 @@ go 1.15
 
 require (
 	github.com/aws/aws-sdk-go v1.35.20
-	github.com/indigo-dc/liboidcagent-go v0.0.0-20200929095958-68f2e370f1bd
+	github.com/indigo-dc/liboidcagent-go v0.3.0
 	github.com/minio/minio v0.0.0-20210223002953-2a79ea033206
 	github.com/ncw/swift v1.0.52
 	github.com/pkg/errors v0.9.1
