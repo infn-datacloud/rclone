@@ -1596,7 +1596,7 @@ func s3Connection(ctx context.Context, opt *Options, client *http.Client) (*s3.S
 			ExpiryWindow: 3 * time.Minute,
 		},
 	}
-	cred := credentials.NewChainCredentials(providers[0:1]) // Enable only IAM
+	cred := credentials.NewChainCredentials(providers) // Enable only IAM
 
 	switch {
 	case opt.EnvAuth:
