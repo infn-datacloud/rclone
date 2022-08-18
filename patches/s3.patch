@@ -1,5 +1,5 @@
---- rclone/backend/s3/s3.go	2021-08-11 12:57:18.000000000 +0200
-+++ backend/s3/s3.go	2021-08-06 18:35:48.000000000 +0200
+--- rclone/backend/s3/s3.go	2022-01-13 10:37:32.000000000 +0100
++++ backend/s3/s3.go	2022-01-13 10:37:22.000000000 +0100
 @@ -6,10 +6,15 @@
  	"context"
  	"crypto/md5"
@@ -79,7 +79,18 @@
  			Name: "access_key_id",
  			Help: "AWS Access Key ID.\nLeave blank for anonymous access or runtime credentials.",
  		}, {
-@@ -1318,6 +1350,8 @@
+@@ -629,10 +661,6 @@
+ 				Value:    "s3.eu-central-1.wasabisys.com",
+ 				Help:     "Wasabi EU Central endpoint",
+ 				Provider: "Wasabi",
+-			}, {
+-				Value:    "s3.ap-northeast-1.wasabisys.com",
+-				Help:     "Wasabi AP Northeast endpoint",
+-				Provider: "Wasabi",
+ 			}},
+ 		}, {
+ 			Name:     "location_constraint",
+@@ -1322,6 +1350,8 @@
  type Options struct {
  	Provider              string               `config:"provider"`
  	EnvAuth               bool                 `config:"env_auth"`
@@ -88,7 +99,7 @@
  	AccessKeyID           string               `config:"access_key_id"`
  	SecretAccessKey       string               `config:"secret_access_key"`
  	Region                string               `config:"region"`
-@@ -1503,7 +1537,20 @@
+@@ -1507,7 +1537,20 @@
  		SessionToken:    opt.SessionToken,
  	}
  
@@ -105,12 +116,12 @@
 +
 +	lowTimeoutClient := &http.Client{
 +		Transport: tr,
-+		Timeout:   1 * time.Second,
++		Timeout:   30 * time.Second,
 +	} // low timeout to ec2 metadata service
  
  	def := defaults.Get()
  	def.Config.HTTPClient = lowTimeoutClient
-@@ -1516,6 +1563,13 @@
+@@ -1520,6 +1563,13 @@
  
  	// first provider to supply a credential set "wins"
  	providers := []credentials.Provider{
@@ -124,7 +135,7 @@
  		// use static credentials if they're present (checked by provider)
  		&credentials.StaticProvider{Value: v},
  
-@@ -1542,14 +1596,14 @@
+@@ -1546,14 +1596,14 @@
  			ExpiryWindow: 3 * time.Minute,
  		},
  	}
@@ -141,7 +152,7 @@
  	case v.AccessKeyID == "":
  		return nil, nil, errors.New("access_key_id not found")
  	case v.SecretAccessKey == "":
-@@ -1568,7 +1622,7 @@
+@@ -1572,7 +1622,7 @@
  	awsConfig := aws.NewConfig().
  		WithMaxRetries(0). // Rely on rclone's retry logic
  		WithCredentials(cred).
@@ -150,7 +161,7 @@
  		WithS3ForcePathStyle(opt.ForcePathStyle).
  		WithS3UseAccelerate(opt.UseAccelerateEndpoint).
  		WithS3UsEast1RegionalEndpoint(endpoints.RegionalS3UsEast1Endpoint)
-@@ -1588,7 +1642,10 @@
+@@ -1592,7 +1642,10 @@
  		// Enable loading config options from ~/.aws/config (selected by AWS_PROFILE env)
  		awsSessionOpts.SharedConfigState = session.SharedConfigEnable
  		// Set the name of the profile if supplied
