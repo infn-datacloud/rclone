@@ -1297,6 +1297,7 @@ const (
 // Options defines the configuration for this backend
 type Options struct {
 	Provider              string               `config:"provider"`
+	RoleName              string               `config:"role_name"`
 	EnvAuth               bool                 `config:"env_auth"`
 	Account               string               `config:"account"`
 	AccessKeyID           string               `config:"access_key_id"`
@@ -1508,6 +1509,7 @@ func s3Connection(ctx context.Context, opt *Options) (*s3.S3, *session.Session, 
 		&IAMProvider{
 			stsEndpoint: opt.Endpoint,
 			accountname: opt.Account,
+			RoleName:    opt.RoleName,
 			httpClient:  def.Config.HTTPClient,
 		},
 

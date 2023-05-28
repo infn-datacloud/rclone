@@ -1,20 +1,22 @@
 package main
 
 import (
+	"bytes"
 	"encoding/xml"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"fmt"
 
-	"github.com/indigo-dc/liboidcagent-go/liboidcagent"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/indigo-dc/liboidcagent-go/liboidcagent"
 	"github.com/minio/minio/pkg/auth"
 )
 
 // IAMProvider credential provider for oidc
 type IAMProvider struct {
 	stsEndpoint string
+	RoleName    string
 	accountname string
 	httpClient  *http.Client
 	creds       *AssumeRoleWithWebIdentityResponse
@@ -48,6 +50,27 @@ type WebIdentityResult struct {
 	SubjectFromWebIdentityToken string           `xml:",omitempty"`
 }
 
+type MyXMLStruct struct {
+	XMLName xml.Name `xml:"AssumeRoleWithWebIdentityResponse"`
+	Attr    string   `xml:"xmlns,attr"`
+	Result  struct {
+		SubjectFromWebIdentityToken string `xml:"SubjectFromWebIdentityToken"`
+		Audience                    string `xml:"Audience"`
+		AssumedRoleUser             struct {
+			Arn          string `xml:"Arn"`
+			AssumeRoleID string `xml:"AssumeRoleId"`
+		} `xml:"AssumedRoleUser"`
+		Credentials struct {
+			AccessKey    string `xml:"AccessKeyId"`
+			Expiration   string `xml:"Expiration"`
+			SecretAccess string `xml:"SecretAccessKey"`
+			SessionToken string `xml:"SessionToken"`
+		} `xml:"Credentials"`
+		Provider         string `xml:"Provider"`
+		PackedPolicySize int    `xml:"PackedPolicySize"`
+	} `xml:"AssumeRoleWithWebIdentityResult"`
+}
+
 // Retrieve credentials
 func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 
@@ -58,9 +81,10 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 
 	fmt.Printf("Access token is: %s\n", token)
 
-
 	//contentType := ""
 	body := url.Values{}
+	body.Set("RoleArn", "arn:aws:iam:::role/"+t.RoleName)
+	body.Set("RoleSessionName", t.RoleName)
 	body.Set("Action", "AssumeRoleWithWebIdentity")
 	body.Set("Version", "2011-06-15")
 	body.Set("WebIdentityToken", token)
@@ -87,15 +111,45 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 		return credentials.Value{}, err
 	}
 
+	var rbody bytes.Buffer
+
+	bodyBytes, errRead := ioutil.ReadAll(r.Body)
+
+	if errRead != nil {
+		// fmt.Println(errRead)
+		return credentials.Value{}, errRead
+	}
+
+	ns := "https://sts.amazonaws.com/doc/2011-06-15/"
+
+	data := string(bodyBytes)
+
+	xmlStruct := MyXMLStruct{
+		Attr: ns,
+	}
+
+	errUnmarshall := xml.Unmarshal([]byte(data), &xmlStruct)
+	if errUnmarshall != nil {
+		// fmt.Println(errUnmarshall)
+		return credentials.Value{}, errUnmarshall
+	}
+
+	xmlBytes, errMarshalIndent := xml.MarshalIndent(xmlStruct, "", "  ")
+	if errMarshalIndent != nil {
+		// fmt.Println(errMarshalIndent)
+		return credentials.Value{}, errMarshalIndent
+	}
+
+	rbody.Write(xmlBytes)
+
 	t.creds = &AssumeRoleWithWebIdentityResponse{}
 
-	rbody, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		// fmt.Printf("error: %v", err)
 		return credentials.Value{}, err
 	}
 
-	err = xml.Unmarshal(rbody, t.creds)
+	err = xml.Unmarshal(rbody.Bytes(), t.creds)
 	if err != nil {
 		// fmt.Printf("error: %v", err)
 		return credentials.Value{}, err
