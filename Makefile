@@ -26,9 +26,13 @@ prepare: clean
 	patch ${ORIGINAL_FILE} < ${PATCH_FILE}
 endif
 
-.PHONY: all build prepare clean patch vars version build-plugin
+.PHONY: all build-macos build prepare clean patch vars version build-plugin
 
-all: clean prepare patch build
+all: clean prepare patch build build-macos
+
+build-macos: clean prepare patch
+	# Change dir and call `make rclone`
+	$(MAKE) GOTAGS=cmount -C rclone rclone
 
 build: clean prepare patch
 	# Change dir and call `make rclone`
