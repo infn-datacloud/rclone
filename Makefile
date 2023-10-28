@@ -30,7 +30,7 @@ endif
 all: clean prepare patch build build-macos patch-windows build-windows
 
 build-windows: clean prepare patch-windows
- .\win-build.bat
+	.\win-build.bat
 	$(MAKE) GOTAGS=cmount -C rclone rclone
 
 build-macos: clean prepare patch
