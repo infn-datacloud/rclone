@@ -1,0 +1,7 @@
+rclone:
+	go build -v --ldflags "-s -X github.com/rclone/rclone/fs.Version=$(TAG)" $(BUILDTAGS) $(BUILD_ARGS)
+	mkdir -p ("{0}\bin" -f (go env GOPATH))
+	cp -av  ("rclone\rclone{0}" -f (go env GOEXE)) ("{0}\bin\rclone{1}.new" -f (go env GOPATH, go env GOEXE))
+	mv -v ("{0}\bin\rclone{1}.new" -f (go env GOPATH, go env GOEXE)) ("{0}\bin\rclone{1}" -f (go env GOPATH, go env GOEXE))
+
+test_all:
