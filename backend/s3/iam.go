@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/indigo-dc/liboidcagent-go"
@@ -82,7 +83,7 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 		token, err = liboidcagent.GetAccessToken(liboidcagent.TokenRequest{
 			ShortName:      t.accountname,
 			MinValidPeriod: 900,
-			Audiences: []string{t.Audience},
+			Audiences:      []string{t.Audience},
 		})
 		if err != nil {
 			return credentials.Value{}, err
@@ -120,6 +121,9 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 		Method: "POST",
 		URL:    url,
 	}
+
+	// Set a timeout of 30 seconds (adjust as needed)
+	t.httpClient.Timeout = time.Duration(60) * time.Second
 
 	// TODO: retrieve token with https POST with t.httpClient
 	r, err := t.httpClient.Do(&req)
