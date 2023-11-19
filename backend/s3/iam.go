@@ -82,7 +82,7 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 		token, err = liboidcagent.GetAccessToken(liboidcagent.TokenRequest{
 			ShortName:      t.accountname,
 			MinValidPeriod: 900,
-   Audiences: []string{t.Audience},
+			Audiences: []string{t.Audience},
 		})
 		if err != nil {
 			return credentials.Value{}, err
