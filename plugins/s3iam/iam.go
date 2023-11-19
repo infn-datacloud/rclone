@@ -17,6 +17,7 @@ import (
 type IAMProvider struct {
 	stsEndpoint string
 	RoleName    string
+	Audience    string
 	accountname string
 	httpClient  *http.Client
 	creds       *AssumeRoleWithWebIdentityResponse
@@ -74,7 +75,7 @@ type MyXMLStruct struct {
 // Retrieve credentials
 func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 
-	token, err := liboidcagent.GetAccessToken2(t.accountname, 60, "", "", "")
+	token, err := liboidcagent.GetAccessToken2(t.accountname, 60, "", "", t.Audience)
 	if err != nil {
 		return credentials.Value{}, err
 	}

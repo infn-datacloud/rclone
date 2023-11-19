@@ -18,6 +18,7 @@ type IAMProvider struct {
 	accountname  string
 	useOidcAgent bool
 	RoleName     string
+	Audience     string
 	httpClient   *http.Client
 	creds        *AssumeRoleWithWebIdentityResponse
 }
@@ -81,6 +82,7 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 		token, err = liboidcagent.GetAccessToken(liboidcagent.TokenRequest{
 			ShortName:      t.accountname,
 			MinValidPeriod: 900,
+   Audiences: []string{t.Audience},
 		})
 		if err != nil {
 			return credentials.Value{}, err

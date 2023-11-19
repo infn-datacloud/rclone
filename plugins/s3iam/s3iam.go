@@ -1298,6 +1298,7 @@ const (
 type Options struct {
 	Provider              string               `config:"provider"`
 	RoleName              string               `config:"role_name"`
+	Audience              string               `config:"audience"`
 	EnvAuth               bool                 `config:"env_auth"`
 	Account               string               `config:"account"`
 	AccessKeyID           string               `config:"access_key_id"`
@@ -1510,6 +1511,7 @@ func s3Connection(ctx context.Context, opt *Options) (*s3.S3, *session.Session, 
 			stsEndpoint: opt.Endpoint,
 			accountname: opt.Account,
 			RoleName:    opt.RoleName,
+			Audience:    opt.Audience,
 			httpClient:  def.Config.HTTPClient,
 		},
 

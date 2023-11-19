@@ -1350,6 +1350,7 @@ const (
 type Options struct {
 	Provider              string               `config:"provider"`
 	RoleName              string               `config:"role_name"`
+	Audience              string               `config:"audience"`
 	EnvAuth               bool                 `config:"env_auth"`
 	Account               string               `config:"account"`    // Add account option
 	UseOidcAgent          bool                 `config:"oidc_agent"` // Add oidc-agent option
@@ -1567,6 +1568,7 @@ func s3Connection(ctx context.Context, opt *Options, client *http.Client) (*s3.S
 		&IAMProvider{
 			stsEndpoint:  opt.Endpoint,
 			RoleName:     opt.RoleName,
+			Audience:     opt.Audience,
 			accountname:  opt.Account,
 			useOidcAgent: opt.UseOidcAgent,
 			httpClient:   def.Config.HTTPClient,
