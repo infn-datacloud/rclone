@@ -1,10 +1,12 @@
 package s3
 
 import (
+	"bytes"
 	"encoding/xml"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/indigo-dc/liboidcagent-go"
@@ -16,6 +18,8 @@ type IAMProvider struct {
 	stsEndpoint  string
 	accountname  string
 	useOidcAgent bool
+	RoleName     string
+	Audience     string
 	httpClient   *http.Client
 	creds        *AssumeRoleWithWebIdentityResponse
 }
@@ -49,6 +53,27 @@ type WebIdentityResult struct {
 	SubjectFromWebIdentityToken string      `xml:",omitempty"`
 }
 
+type MyXMLStruct struct {
+	XMLName xml.Name `xml:"AssumeRoleWithWebIdentityResponse"`
+	Attr    string   `xml:"xmlns,attr"`
+	Result  struct {
+		SubjectFromWebIdentityToken string `xml:"SubjectFromWebIdentityToken"`
+		Audience                    string `xml:"Audience"`
+		AssumedRoleUser             struct {
+			Arn          string `xml:"Arn"`
+			AssumeRoleID string `xml:"AssumeRoleId"`
+		} `xml:"AssumedRoleUser"`
+		Credentials struct {
+			AccessKey    string `xml:"AccessKeyId"`
+			Expiration   string `xml:"Expiration"`
+			SecretAccess string `xml:"SecretAccessKey"`
+			SessionToken string `xml:"SessionToken"`
+		} `xml:"Credentials"`
+		Provider         string `xml:"Provider"`
+		PackedPolicySize int    `xml:"PackedPolicySize"`
+	} `xml:"AssumeRoleWithWebIdentityResult"`
+}
+
 // Retrieve credentials
 func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 	var err error
@@ -58,7 +83,7 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 		token, err = liboidcagent.GetAccessToken(liboidcagent.TokenRequest{
 			ShortName:      t.accountname,
 			MinValidPeriod: 900,
-			Audiences: []string{"minio-af-it"},
+			Audiences:      []string{t.Audience},
 		})
 		if err != nil {
 			return credentials.Value{}, err
@@ -76,6 +101,8 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 
 	//contentType := ""
 	body := url.Values{}
+	body.Set("RoleArn", "arn:aws:iam:::role/"+t.RoleName)
+	body.Set("RoleSessionName", t.RoleName)
 	body.Set("Action", "AssumeRoleWithWebIdentity")
 	body.Set("Version", "2011-06-15")
 	body.Set("WebIdentityToken", token)
@@ -95,6 +122,9 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 		URL:    url,
 	}
 
+	// Set a timeout of 30 seconds (adjust as needed)
+	t.httpClient.Timeout = time.Duration(60) * time.Second
+
 	// TODO: retrieve token with https POST with t.httpClient
 	r, err := t.httpClient.Do(&req)
 	if err != nil {
@@ -102,15 +132,45 @@ func (t *IAMProvider) Retrieve() (credentials.Value, error) {
 		return credentials.Value{}, err
 	}
 
+	var rbody bytes.Buffer
+
+	bodyBytes, errRead := ioutil.ReadAll(r.Body)
+
+	if errRead != nil {
+		fs.Errorf(errRead, "IAM read body")
+		return credentials.Value{}, errRead
+	}
+
+	ns := "https://sts.amazonaws.com/doc/2011-06-15/"
+
+	data := string(bodyBytes)
+
+	xmlStruct := MyXMLStruct{
+		Attr: ns,
+	}
+
+	errUnmarshall := xml.Unmarshal([]byte(data), &xmlStruct)
+	if errUnmarshall != nil {
+		fs.Errorf(errUnmarshall, "IAM xml unmarshal")
+		return credentials.Value{}, errUnmarshall
+	}
+
+	xmlBytes, errMarshalIndent := xml.MarshalIndent(xmlStruct, "", "  ")
+	if errMarshalIndent != nil {
+		fs.Errorf(errMarshalIndent, "IAM xml marshal indent")
+		return credentials.Value{}, errMarshalIndent
+	}
+
+	rbody.Write(xmlBytes)
+
 	t.creds = &AssumeRoleWithWebIdentityResponse{}
 
-	rbody, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		fs.Errorf(err, "IAM - read body")
 		return credentials.Value{}, err
 	}
 
-	err = xml.Unmarshal(rbody, t.creds)
+	err = xml.Unmarshal(rbody.Bytes(), t.creds)
 	if err != nil {
 		fs.Errorf(err, "IAM - unmarshal credentials")
 		return credentials.Value{}, err

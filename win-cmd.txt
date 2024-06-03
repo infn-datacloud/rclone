@@ -1,0 +1,7 @@
+rclone:
+	go build -v --ldflags "-s -X github.com/rclone/rclone/fs.Version=$(TAG)" $(BUILDTAGS) $(BUILD_ARGS)
+	powershell -Command "if (-not (Test-Path '$(shell go env GOPATH)\bin')) { New-Item -ItemType Directory -Path '$(shell go env GOPATH)\bin' }"
+	copy rclone$(shell go env GOEXE) $(shell go env GOPATH)\bin\rclone$(shell go env GOEXE).new
+	move $(shell go env GOPATH)\bin\rclone$(shell go env GOEXE).new $(shell go env GOPATH)\bin\rclone$(shell go env GOEXE)
+
+test_all:

@@ -1349,6 +1349,8 @@ const (
 // Options defines the configuration for this backend
 type Options struct {
 	Provider              string               `config:"provider"`
+	RoleName              string               `config:"role_name"`
+	Audience              string               `config:"audience"`
 	EnvAuth               bool                 `config:"env_auth"`
 	Account               string               `config:"account"`    // Add account option
 	UseOidcAgent          bool                 `config:"oidc_agent"` // Add oidc-agent option
@@ -1549,7 +1551,7 @@ func s3Connection(ctx context.Context, opt *Options, client *http.Client) (*s3.S
 
 	lowTimeoutClient := &http.Client{
 		Transport: tr,
-		Timeout:   30 * time.Second,
+		Timeout:   1 * time.Second,
 	} // low timeout to ec2 metadata service
 
 	def := defaults.Get()
@@ -1565,6 +1567,8 @@ func s3Connection(ctx context.Context, opt *Options, client *http.Client) (*s3.S
 	providers := []credentials.Provider{
 		&IAMProvider{
 			stsEndpoint:  opt.Endpoint,
+			RoleName:     opt.RoleName,
+			Audience:     opt.Audience,
 			accountname:  opt.Account,
 			useOidcAgent: opt.UseOidcAgent,
 			httpClient:   def.Config.HTTPClient,
@@ -1596,7 +1600,7 @@ func s3Connection(ctx context.Context, opt *Options, client *http.Client) (*s3.S
 			ExpiryWindow: 3 * time.Minute,
 		},
 	}
-	cred := credentials.NewChainCredentials(providers) // Enable only IAM
+	cred := credentials.NewChainCredentials(providers[0:1]) // Enable only IAM
 
 	switch {
 	case opt.EnvAuth:

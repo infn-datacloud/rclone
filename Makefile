@@ -8,9 +8,8 @@ CUR_OS=""
 ifeq ($(OS),Windows_NT)
 publish:
 	cp `go env GOPATH`/bin/rclone`go env GOEXE` ./rclone_windows.exe
-
 prepare: clean
-	mv ${UPDATED_FILE} ${ORIGINAL_FILE}
+	copy backend\s3\s3.go rclone\backend\s3\s3.go
 else
     UNAME_S := $(shell uname -s)
     ifeq ($(UNAME_S),Linux)
@@ -26,9 +25,17 @@ prepare: clean
 	patch ${ORIGINAL_FILE} < ${PATCH_FILE}
 endif
 
-.PHONY: all build prepare clean patch vars version build-plugin
+.PHONY: all build-macos build prepare clean patch vars version build-plugin patch-windows build-windows
 
-all: clean prepare patch build
+all: clean prepare patch build build-macos patch-windows build-windows
+
+build-windows: clean prepare patch-windows
+	.\win-build.bat
+	$(MAKE) GOTAGS=cmount -C rclone rclone
+
+build-macos: clean prepare patch
+	# Change dir and call `make rclone`
+	$(MAKE) GOTAGS=cmount -C rclone rclone
 
 build: clean prepare patch
 	# Change dir and call `make rclone`
@@ -39,6 +46,11 @@ clean:
 	git submodule update --init
 	git submodule sync
 	cd rclone && git reset --hard HEAD && git checkout ${RCLONE_VERSION}
+
+patch-windows: prepare
+	copy backend\s3\iam.go rclone\backend\s3\iam.go
+	copy backend\s3\authMinio.go rclone\backend\s3\authMinio.go
+	cd rclone && go mod tidy
 
 patch: prepare
 	cp backend/s3/iam.go rclone/backend/s3/
